@@ -18,7 +18,7 @@ $$ language plpgsql;
 -- ---------------------------------------------------------------------------
 -- profiles (1:1 with auth.users)
 -- ---------------------------------------------------------------------------
-create table public.profiles (
+create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   email text not null,
   full_name text,
@@ -28,6 +28,7 @@ create table public.profiles (
   updated_at timestamptz not null default now()
 );
 
+drop trigger if exists set_updated_at on public.profiles;
 create trigger set_updated_at before update on public.profiles
   for each row execute function public.set_updated_at();
 
@@ -41,6 +42,7 @@ begin
 end;
 $$ language plpgsql security definer set search_path = public;
 
+drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
@@ -48,7 +50,7 @@ create trigger on_auth_user_created
 -- ---------------------------------------------------------------------------
 -- projects
 -- ---------------------------------------------------------------------------
-create table public.projects (
+create table if not exists public.projects (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
   name text not null,
@@ -59,14 +61,15 @@ create table public.projects (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index projects_user_id_idx on public.projects (user_id);
+create index if not exists projects_user_id_idx on public.projects (user_id);
+drop trigger if exists set_updated_at on public.projects;
 create trigger set_updated_at before update on public.projects
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------------------------
 -- domains (the project's own domain, plus any competitor domains tracked)
 -- ---------------------------------------------------------------------------
-create table public.domains (
+create table if not exists public.domains (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects (id) on delete cascade,
   domain text not null,
@@ -75,14 +78,15 @@ create table public.domains (
   updated_at timestamptz not null default now(),
   unique (project_id, domain)
 );
-create index domains_project_id_idx on public.domains (project_id);
+create index if not exists domains_project_id_idx on public.domains (project_id);
+drop trigger if exists set_updated_at on public.domains;
 create trigger set_updated_at before update on public.domains
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------------------------
 -- domain_metrics (daily snapshot time series, from SEO data provider)
 -- ---------------------------------------------------------------------------
-create table public.domain_metrics (
+create table if not exists public.domain_metrics (
   id uuid primary key default gen_random_uuid(),
   domain_id uuid not null references public.domains (id) on delete cascade,
   date date not null default current_date,
@@ -98,7 +102,8 @@ create table public.domain_metrics (
   updated_at timestamptz not null default now(),
   unique (domain_id, date, source)
 );
-create index domain_metrics_domain_id_idx on public.domain_metrics (domain_id, date desc);
+create index if not exists domain_metrics_domain_id_idx on public.domain_metrics (domain_id, date desc);
+drop trigger if exists set_updated_at on public.domain_metrics;
 create trigger set_updated_at before update on public.domain_metrics
   for each row execute function public.set_updated_at();
 
@@ -106,7 +111,7 @@ create trigger set_updated_at before update on public.domain_metrics
 -- keywords (organic keywords discovered via provider, and manually tracked
 -- rank-tracking keywords)
 -- ---------------------------------------------------------------------------
-create table public.keywords (
+create table if not exists public.keywords (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects (id) on delete cascade,
   domain_id uuid references public.domains (id) on delete cascade,
@@ -124,14 +129,15 @@ create table public.keywords (
   updated_at timestamptz not null default now(),
   unique (project_id, keyword, country, device)
 );
-create index keywords_project_id_idx on public.keywords (project_id);
+create index if not exists keywords_project_id_idx on public.keywords (project_id);
+drop trigger if exists set_updated_at on public.keywords;
 create trigger set_updated_at before update on public.keywords
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------------------------
 -- keyword_rankings (position history per keyword)
 -- ---------------------------------------------------------------------------
-create table public.keyword_rankings (
+create table if not exists public.keyword_rankings (
   id uuid primary key default gen_random_uuid(),
   keyword_id uuid not null references public.keywords (id) on delete cascade,
   date date not null default current_date,
@@ -145,14 +151,15 @@ create table public.keyword_rankings (
   updated_at timestamptz not null default now(),
   unique (keyword_id, date)
 );
-create index keyword_rankings_keyword_id_idx on public.keyword_rankings (keyword_id, date desc);
+create index if not exists keyword_rankings_keyword_id_idx on public.keyword_rankings (keyword_id, date desc);
+drop trigger if exists set_updated_at on public.keyword_rankings;
 create trigger set_updated_at before update on public.keyword_rankings
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------------------------
 -- pages (crawled / provider-known URLs)
 -- ---------------------------------------------------------------------------
-create table public.pages (
+create table if not exists public.pages (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects (id) on delete cascade,
   domain_id uuid references public.domains (id) on delete cascade,
@@ -179,14 +186,15 @@ create table public.pages (
   updated_at timestamptz not null default now(),
   unique (project_id, url)
 );
-create index pages_project_id_idx on public.pages (project_id);
+create index if not exists pages_project_id_idx on public.pages (project_id);
+drop trigger if exists set_updated_at on public.pages;
 create trigger set_updated_at before update on public.pages
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------------------------
 -- page_metrics (traffic performance per page, from provider)
 -- ---------------------------------------------------------------------------
-create table public.page_metrics (
+create table if not exists public.page_metrics (
   id uuid primary key default gen_random_uuid(),
   page_id uuid not null references public.pages (id) on delete cascade,
   date date not null default current_date,
@@ -199,14 +207,15 @@ create table public.page_metrics (
   updated_at timestamptz not null default now(),
   unique (page_id, date)
 );
-create index page_metrics_page_id_idx on public.page_metrics (page_id, date desc);
+create index if not exists page_metrics_page_id_idx on public.page_metrics (page_id, date desc);
+drop trigger if exists set_updated_at on public.page_metrics;
 create trigger set_updated_at before update on public.page_metrics
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------------------------
 -- competitors
 -- ---------------------------------------------------------------------------
-create table public.competitors (
+create table if not exists public.competitors (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects (id) on delete cascade,
   domain text not null,
@@ -220,14 +229,15 @@ create table public.competitors (
   updated_at timestamptz not null default now(),
   unique (project_id, domain)
 );
-create index competitors_project_id_idx on public.competitors (project_id);
+create index if not exists competitors_project_id_idx on public.competitors (project_id);
+drop trigger if exists set_updated_at on public.competitors;
 create trigger set_updated_at before update on public.competitors
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------------------------
 -- competitor_keywords (keyword-gap data)
 -- ---------------------------------------------------------------------------
-create table public.competitor_keywords (
+create table if not exists public.competitor_keywords (
   id uuid primary key default gen_random_uuid(),
   competitor_id uuid not null references public.competitors (id) on delete cascade,
   keyword_id uuid references public.keywords (id) on delete cascade,
@@ -240,14 +250,15 @@ create table public.competitor_keywords (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index competitor_keywords_competitor_id_idx on public.competitor_keywords (competitor_id);
+create index if not exists competitor_keywords_competitor_id_idx on public.competitor_keywords (competitor_id);
+drop trigger if exists set_updated_at on public.competitor_keywords;
 create trigger set_updated_at before update on public.competitor_keywords
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------------------------
 -- backlinks
 -- ---------------------------------------------------------------------------
-create table public.backlinks (
+create table if not exists public.backlinks (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects (id) on delete cascade,
   domain_id uuid references public.domains (id) on delete cascade,
@@ -263,14 +274,15 @@ create table public.backlinks (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index backlinks_project_id_idx on public.backlinks (project_id);
+create index if not exists backlinks_project_id_idx on public.backlinks (project_id);
+drop trigger if exists set_updated_at on public.backlinks;
 create trigger set_updated_at before update on public.backlinks
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------------------------
 -- referring_domains
 -- ---------------------------------------------------------------------------
-create table public.referring_domains (
+create table if not exists public.referring_domains (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects (id) on delete cascade,
   domain_id uuid references public.domains (id) on delete cascade,
@@ -283,14 +295,15 @@ create table public.referring_domains (
   updated_at timestamptz not null default now(),
   unique (project_id, referring_domain)
 );
-create index referring_domains_project_id_idx on public.referring_domains (project_id);
+create index if not exists referring_domains_project_id_idx on public.referring_domains (project_id);
+drop trigger if exists set_updated_at on public.referring_domains;
 create trigger set_updated_at before update on public.referring_domains
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------------------------
 -- site_audits (one row per crawl run)
 -- ---------------------------------------------------------------------------
-create table public.site_audits (
+create table if not exists public.site_audits (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects (id) on delete cascade,
   domain_id uuid references public.domains (id) on delete cascade,
@@ -314,14 +327,15 @@ create table public.site_audits (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index site_audits_project_id_idx on public.site_audits (project_id, created_at desc);
+create index if not exists site_audits_project_id_idx on public.site_audits (project_id, created_at desc);
+drop trigger if exists set_updated_at on public.site_audits;
 create trigger set_updated_at before update on public.site_audits
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------------------------
 -- audit_issues
 -- ---------------------------------------------------------------------------
-create table public.audit_issues (
+create table if not exists public.audit_issues (
   id uuid primary key default gen_random_uuid(),
   site_audit_id uuid not null references public.site_audits (id) on delete cascade,
   project_id uuid not null references public.projects (id) on delete cascade,
@@ -338,15 +352,16 @@ create table public.audit_issues (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index audit_issues_site_audit_id_idx on public.audit_issues (site_audit_id);
-create index audit_issues_project_id_idx on public.audit_issues (project_id);
+create index if not exists audit_issues_site_audit_id_idx on public.audit_issues (site_audit_id);
+create index if not exists audit_issues_project_id_idx on public.audit_issues (project_id);
+drop trigger if exists set_updated_at on public.audit_issues;
 create trigger set_updated_at before update on public.audit_issues
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------------------------
 -- serp_results
 -- ---------------------------------------------------------------------------
-create table public.serp_results (
+create table if not exists public.serp_results (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects (id) on delete cascade,
   keyword_id uuid references public.keywords (id) on delete cascade,
@@ -360,15 +375,16 @@ create table public.serp_results (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index serp_results_project_id_idx on public.serp_results (project_id);
-create index serp_results_keyword_id_idx on public.serp_results (keyword_id);
+create index if not exists serp_results_project_id_idx on public.serp_results (project_id);
+create index if not exists serp_results_keyword_id_idx on public.serp_results (keyword_id);
+drop trigger if exists set_updated_at on public.serp_results;
 create trigger set_updated_at before update on public.serp_results
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------------------------
 -- seo_opportunities
 -- ---------------------------------------------------------------------------
-create table public.seo_opportunities (
+create table if not exists public.seo_opportunities (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects (id) on delete cascade,
   keyword_id uuid references public.keywords (id) on delete cascade,
@@ -386,14 +402,15 @@ create table public.seo_opportunities (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index seo_opportunities_project_id_idx on public.seo_opportunities (project_id, opportunity_score desc);
+create index if not exists seo_opportunities_project_id_idx on public.seo_opportunities (project_id, opportunity_score desc);
+drop trigger if exists set_updated_at on public.seo_opportunities;
 create trigger set_updated_at before update on public.seo_opportunities
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------------------------
 -- reports
 -- ---------------------------------------------------------------------------
-create table public.reports (
+create table if not exists public.reports (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects (id) on delete cascade,
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -405,7 +422,8 @@ create table public.reports (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index reports_project_id_idx on public.reports (project_id, created_at desc);
+create index if not exists reports_project_id_idx on public.reports (project_id, created_at desc);
+drop trigger if exists set_updated_at on public.reports;
 create trigger set_updated_at before update on public.reports
   for each row execute function public.set_updated_at();
 
@@ -431,16 +449,23 @@ alter table public.seo_opportunities enable row level security;
 alter table public.reports enable row level security;
 
 -- profiles: a user can only see/update their own profile row
+drop policy if exists "profiles_select_own" on public.profiles;
 create policy "profiles_select_own" on public.profiles for select using (id = auth.uid());
+drop policy if exists "profiles_update_own" on public.profiles;
 create policy "profiles_update_own" on public.profiles for update using (id = auth.uid());
 
 -- projects: full CRUD scoped to owner
+drop policy if exists "projects_select_own" on public.projects;
 create policy "projects_select_own" on public.projects for select using (user_id = auth.uid());
+drop policy if exists "projects_insert_own" on public.projects;
 create policy "projects_insert_own" on public.projects for insert with check (user_id = auth.uid());
+drop policy if exists "projects_update_own" on public.projects;
 create policy "projects_update_own" on public.projects for update using (user_id = auth.uid());
+drop policy if exists "projects_delete_own" on public.projects;
 create policy "projects_delete_own" on public.projects for delete using (user_id = auth.uid());
 
 -- domains: scoped via project ownership
+drop policy if exists "domains_all_own" on public.domains;
 create policy "domains_all_own" on public.domains for all using (
   exists (select 1 from public.projects p where p.id = domains.project_id and p.user_id = auth.uid())
 ) with check (
@@ -448,6 +473,7 @@ create policy "domains_all_own" on public.domains for all using (
 );
 
 -- domain_metrics: scoped via domain -> project ownership
+drop policy if exists "domain_metrics_all_own" on public.domain_metrics;
 create policy "domain_metrics_all_own" on public.domain_metrics for all using (
   exists (
     select 1 from public.domains d
@@ -463,6 +489,7 @@ create policy "domain_metrics_all_own" on public.domain_metrics for all using (
 );
 
 -- keywords: scoped via project ownership
+drop policy if exists "keywords_all_own" on public.keywords;
 create policy "keywords_all_own" on public.keywords for all using (
   exists (select 1 from public.projects p where p.id = keywords.project_id and p.user_id = auth.uid())
 ) with check (
@@ -470,6 +497,7 @@ create policy "keywords_all_own" on public.keywords for all using (
 );
 
 -- keyword_rankings: scoped via keyword -> project ownership
+drop policy if exists "keyword_rankings_all_own" on public.keyword_rankings;
 create policy "keyword_rankings_all_own" on public.keyword_rankings for all using (
   exists (
     select 1 from public.keywords k
@@ -485,6 +513,7 @@ create policy "keyword_rankings_all_own" on public.keyword_rankings for all usin
 );
 
 -- pages: scoped via project ownership
+drop policy if exists "pages_all_own" on public.pages;
 create policy "pages_all_own" on public.pages for all using (
   exists (select 1 from public.projects p where p.id = pages.project_id and p.user_id = auth.uid())
 ) with check (
@@ -492,6 +521,7 @@ create policy "pages_all_own" on public.pages for all using (
 );
 
 -- page_metrics: scoped via page -> project ownership
+drop policy if exists "page_metrics_all_own" on public.page_metrics;
 create policy "page_metrics_all_own" on public.page_metrics for all using (
   exists (
     select 1 from public.pages pg
@@ -507,6 +537,7 @@ create policy "page_metrics_all_own" on public.page_metrics for all using (
 );
 
 -- competitors: scoped via project ownership
+drop policy if exists "competitors_all_own" on public.competitors;
 create policy "competitors_all_own" on public.competitors for all using (
   exists (select 1 from public.projects p where p.id = competitors.project_id and p.user_id = auth.uid())
 ) with check (
@@ -514,6 +545,7 @@ create policy "competitors_all_own" on public.competitors for all using (
 );
 
 -- competitor_keywords: scoped via competitor -> project ownership
+drop policy if exists "competitor_keywords_all_own" on public.competitor_keywords;
 create policy "competitor_keywords_all_own" on public.competitor_keywords for all using (
   exists (
     select 1 from public.competitors c
@@ -529,6 +561,7 @@ create policy "competitor_keywords_all_own" on public.competitor_keywords for al
 );
 
 -- backlinks: scoped via project ownership
+drop policy if exists "backlinks_all_own" on public.backlinks;
 create policy "backlinks_all_own" on public.backlinks for all using (
   exists (select 1 from public.projects p where p.id = backlinks.project_id and p.user_id = auth.uid())
 ) with check (
@@ -536,6 +569,7 @@ create policy "backlinks_all_own" on public.backlinks for all using (
 );
 
 -- referring_domains: scoped via project ownership
+drop policy if exists "referring_domains_all_own" on public.referring_domains;
 create policy "referring_domains_all_own" on public.referring_domains for all using (
   exists (select 1 from public.projects p where p.id = referring_domains.project_id and p.user_id = auth.uid())
 ) with check (
@@ -543,6 +577,7 @@ create policy "referring_domains_all_own" on public.referring_domains for all us
 );
 
 -- site_audits: scoped via project ownership
+drop policy if exists "site_audits_all_own" on public.site_audits;
 create policy "site_audits_all_own" on public.site_audits for all using (
   exists (select 1 from public.projects p where p.id = site_audits.project_id and p.user_id = auth.uid())
 ) with check (
@@ -550,6 +585,7 @@ create policy "site_audits_all_own" on public.site_audits for all using (
 );
 
 -- audit_issues: scoped via project ownership
+drop policy if exists "audit_issues_all_own" on public.audit_issues;
 create policy "audit_issues_all_own" on public.audit_issues for all using (
   exists (select 1 from public.projects p where p.id = audit_issues.project_id and p.user_id = auth.uid())
 ) with check (
@@ -557,6 +593,7 @@ create policy "audit_issues_all_own" on public.audit_issues for all using (
 );
 
 -- serp_results: scoped via project ownership
+drop policy if exists "serp_results_all_own" on public.serp_results;
 create policy "serp_results_all_own" on public.serp_results for all using (
   exists (select 1 from public.projects p where p.id = serp_results.project_id and p.user_id = auth.uid())
 ) with check (
@@ -564,6 +601,7 @@ create policy "serp_results_all_own" on public.serp_results for all using (
 );
 
 -- seo_opportunities: scoped via project ownership
+drop policy if exists "seo_opportunities_all_own" on public.seo_opportunities;
 create policy "seo_opportunities_all_own" on public.seo_opportunities for all using (
   exists (select 1 from public.projects p where p.id = seo_opportunities.project_id and p.user_id = auth.uid())
 ) with check (
@@ -571,5 +609,6 @@ create policy "seo_opportunities_all_own" on public.seo_opportunities for all us
 );
 
 -- reports: scoped via owner
+drop policy if exists "reports_all_own" on public.reports;
 create policy "reports_all_own" on public.reports for all using (user_id = auth.uid())
   with check (user_id = auth.uid());
