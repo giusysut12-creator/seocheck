@@ -38,8 +38,11 @@ supabase/
     crawl-site/            server-side SEO crawler (Deno)
     seo-provider-proxy/    SEODataProvider adapter (keeps API keys server-side)
     ai-assistant/          AI SEO Assistant (grounded in project data only)
-    _shared/                 HTML parsing, robots.txt parsing, scoring, cors
 ```
+
+Each Edge Function is a single self-contained `index.ts` with no cross-file
+imports, so it can be deployed either with the Supabase CLI or by pasting it
+straight into the dashboard's Edge Functions editor.
 
 ## 3. Database structure (Postgres, Supabase)
 
@@ -131,6 +134,24 @@ injected automatically into every Edge Function by Supabase — you don't set
 them yourself.
 
 ## 6. Setup instructions
+
+### Option A — no terminal, browser only
+
+Everything can be done from the browser, with the app hosted on Vercel:
+
+1. **Supabase → SQL Editor**: paste the contents of
+   `supabase/migrations/0001_init.sql` and hit Run. This creates all tables
+   and RLS policies.
+2. **Supabase → Edge Functions**: create three functions named exactly
+   `crawl-site`, `seo-provider-proxy` and `ai-assistant`, pasting the
+   matching `supabase/functions/<name>/index.ts` into each. Each file is
+   self-contained, so a single paste per function is all that's needed.
+3. **Vercel → Add New → Project**: import the GitHub repo, add the two
+   environment variables `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
+   (from Supabase → Project Settings → API), then Deploy. Vercel builds it
+   in the cloud and gives you a public URL.
+
+### Option B — with the Supabase CLI
 
 1. **Create a Supabase project** at [supabase.com](https://supabase.com).
 2. **Run the migration**:
