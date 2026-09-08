@@ -17,12 +17,16 @@ export default function Settings() {
   const { theme, setTheme } = useTheme()
   const [seoConfigured, setSeoConfigured] = React.useState<boolean | null>(null)
   const [aiConfigured, setAiConfigured] = React.useState<boolean | null>(null)
+  const [crawlerDeployed, setCrawlerDeployed] = React.useState<boolean | null>(null)
 
   React.useEffect(() => {
     checkProviderConfigured().then(setSeoConfigured)
     supabase.functions
       .invoke<{ configured: boolean }>('ai-assistant', { body: { action: 'status' } })
       .then(({ data }) => setAiConfigured(data?.configured ?? false))
+    supabase.functions
+      .invoke<{ configured: boolean }>('crawl-site', { body: { action: 'status' } })
+      .then(({ data }) => setCrawlerDeployed(data?.configured ?? false))
   }, [])
 
   return (
@@ -80,7 +84,11 @@ export default function Settings() {
             description="Answers questions grounded in your project's data. Set AI_API_KEY (Anthropic Messages API)."
             configured={aiConfigured}
           />
-          <IntegrationRow name="Site Audit Crawler" description="Built-in — no configuration required." configured={true} />
+          <IntegrationRow
+            name="Site Audit Crawler"
+            description="Built-in — needs no API key, but the crawl-site Edge Function must be deployed to your Supabase project."
+            configured={crawlerDeployed}
+          />
         </CardContent>
       </Card>
 

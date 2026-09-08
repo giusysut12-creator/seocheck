@@ -772,12 +772,16 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
 
-  let body: { project_id?: string }
+  let body: { action?: string; project_id?: string }
   try {
     body = await req.json()
   } catch {
     return jsonResponse({ error: 'Invalid JSON body' }, 400)
   }
+
+  // Reachability ping used by the Settings page to report whether the crawler
+  // is actually deployed, rather than assuming it is.
+  if (body.action === 'status') return jsonResponse({ configured: true })
 
   const projectId = body.project_id
   if (!projectId) return jsonResponse({ error: 'project_id is required' }, 400)
