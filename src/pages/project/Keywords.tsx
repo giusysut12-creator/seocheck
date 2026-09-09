@@ -12,6 +12,7 @@ import {
 } from '@/lib/google/analytics'
 import { SYNC_RANGES, type SyncRange } from '@/lib/google/searchConsole'
 import { enrichKeywords } from '@/lib/google/ads'
+import { classifyKeyword, KIND_LABELS, type ClassifiedOpportunity } from '@/lib/seo/opportunityTypes'
 import type { KeywordMetric } from '@/lib/database.types'
 import { GoogleConnectionCard } from '@/components/google/GoogleConnectionCard'
 import { EmptyState } from '@/components/EmptyState'
@@ -246,6 +247,17 @@ export default function Keywords() {
                     <TableHead>
                       <Tooltip>
                         <TooltipTrigger className="cursor-help underline decoration-dotted underline-offset-2">
+                          Opportunity
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          What this keyword needs, and the clicks it would be worth. Blank means it is performing as
+                          expected for its position.
+                        </TooltipContent>
+                      </Tooltip>
+                    </TableHead>
+                    <TableHead>
+                      <Tooltip>
+                        <TooltipTrigger className="cursor-help underline decoration-dotted underline-offset-2">
                           Volume
                         </TooltipTrigger>
                         <TooltipContent>
@@ -269,6 +281,9 @@ export default function Keywords() {
                         <TableCell>{row.position !== null ? row.position.toFixed(1) : '—'}</TableCell>
                         <TableCell>
                           <PositionTrend change={row.position_change} />
+                        </TableCell>
+                        <TableCell>
+                          <OpportunityCell row={row} />
                         </TableCell>
                         <TableCell>{ads?.search_volume != null ? formatNumber(ads.search_volume) : '—'}</TableCell>
                         <TableCell>{ads?.cpc != null ? formatCurrency(ads.cpc) : '—'}</TableCell>
@@ -339,6 +354,37 @@ export default function Keywords() {
         </>
       )}
     </div>
+  )
+}
+
+/**
+ * The most valuable opportunity for this keyword, if any. Turns a row of
+ * numbers into the reason it is worth attention.
+ */
+function OpportunityCell({ row }: { row: GscKeywordRow }) {
+  const best: ClassifiedOpportunity | undefined = classifyKeyword({
+    keyword: row.keyword,
+    position: row.position,
+    impressions: row.impressions,
+    clicks: row.clicks,
+    ctr: row.ctr,
+    previousPosition: row.previous_position,
+    previousClicks: row.previous_clicks,
+    topPage: row.top_page,
+  }).sort((a, b) => b.score - a.score)[0]
+
+  if (!best) return <span className="text-xs text-muted-foreground">—</span>
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="flex cursor-help items-center gap-1.5">
+          <Badge variant="accent">{KIND_LABELS[best.kind].label}</Badge>
+          <span className="text-xs text-muted-foreground">+{formatNumber(best.potentialClicks)}</span>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{best.headline}</TooltipContent>
+    </Tooltip>
   )
 }
 

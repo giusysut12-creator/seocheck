@@ -184,3 +184,26 @@ export function change(current: number | null, previous: number | null): number 
   if (current === null || previous === null || previous === 0) return null
   return ((current - previous) / previous) * 100
 }
+
+export interface CannibalizationRow {
+  keyword: string
+  total_impressions: number
+  page_count: number
+  pages: { page: string; impressions: number; clicks: number; position: number | null }[]
+}
+
+/** Queries where more than one of the site's own pages competes. */
+export async function fetchCannibalization(
+  projectId: string,
+  window: DateWindow,
+  minImpressions = 50,
+): Promise<CannibalizationRow[]> {
+  const { data, error } = await supabase.rpc('gsc_cannibalization', {
+    p_project_id: projectId,
+    p_date_from: window.from,
+    p_date_to: window.to,
+    p_min_impressions: minImpressions,
+  })
+  if (error) throw new Error(error.message)
+  return (data as CannibalizationRow[] | null) ?? []
+}

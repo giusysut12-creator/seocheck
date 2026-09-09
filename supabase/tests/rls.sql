@@ -141,6 +141,12 @@ select pg_temp.expect(
 );
 
 select pg_temp.expect(
+  (select count(*) from public.gsc_cannibalization(
+     'bbbbbbbb-2222-2222-2222-222222222222', current_date - 30, current_date)) = 0,
+  'gsc_cannibalization must return nothing for another user''s project'
+);
+
+select pg_temp.expect(
   (select count(*) from public.gsc_keywords(
      'aaaaaaaa-1111-1111-1111-111111111111', current_date - 30, current_date)) = 1,
   'gsc_keywords must still return the caller''s own data'
