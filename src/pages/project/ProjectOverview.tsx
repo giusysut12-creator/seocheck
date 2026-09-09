@@ -12,6 +12,8 @@ import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { EmptyState } from '@/components/EmptyState'
 import { MetricCard } from '@/components/dashboard/MetricCard'
+import { OrganicPerformance } from '@/components/google/OrganicPerformance'
+import { GoogleConnectionCard } from '@/components/google/GoogleConnectionCard'
 import { SeoScoreGauge } from '@/components/dashboard/SeoScoreGauge'
 import { formatCurrency, formatNumber } from '@/lib/utils'
 
@@ -22,6 +24,7 @@ export default function ProjectOverview() {
   const navigate = useNavigate()
   const [running, setRunning] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [gscVersion, setGscVersion] = React.useState(0)
 
   React.useEffect(() => {
     if (project) localStorage.setItem(LAST_PROJECT_KEY, project.id)
@@ -108,6 +111,10 @@ export default function ProjectOverview() {
           </CardContent>
         </Card>
       )}
+
+      <OrganicPerformance projectId={project.id} key={`gsc-${gscVersion}`} />
+
+      <GoogleConnectionCard projectId={project.id} onSynced={() => setGscVersion((v) => v + 1)} />
 
       {audit && audit.status === 'completed' && (
         <>

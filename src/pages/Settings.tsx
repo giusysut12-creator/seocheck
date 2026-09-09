@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { GoogleConnectionCard } from '@/components/google/GoogleConnectionCard'
 import { formatDate } from '@/lib/utils'
 
 export default function Settings() {
@@ -67,6 +68,8 @@ export default function Settings() {
           </Button>
         </CardContent>
       </Card>
+
+      <GoogleConnectionCard />
 
       <Card>
         <CardHeader>
