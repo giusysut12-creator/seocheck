@@ -211,3 +211,141 @@ Works with **zero external providers**: Auth, Projects, Site Audit crawler,
 SEO Health Score, Site Audit issues, Pages (crawler-derived columns),
 crawler-derived Technical/Internal-Linking/Content Opportunities, Rank
 Tracking keyword management, and PDF report export.
+
+---
+
+## Google Search Console & Google Ads
+
+The crawler answers *what is wrong with the site*. Search Console answers
+*what the site actually earns in search*. This integration joins the two, and
+adds Google Ads demand data on top where it is available.
+
+### Data provenance
+
+Every metric knows where it came from, and the three sources are never
+blended into one number:
+
+| Source | Provides | Nature |
+|---|---|---|
+| **Site Audit crawler** | title, meta, H1, word count, internal links, status codes, images without alt | measured on the page |
+| **Google Search Console** | clicks, impressions, CTR, average position, ranking page, per-query and per-page | measured by Google for *this* site |
+| **Google Ads** | average monthly searches, CPC, competition | estimated market demand for the *query* |
+
+Two distinctions the UI keeps visible because conflating them produces wrong
+decisions:
+
+- **Search Console impressions ≠ Google Ads search volume.** The first counts
+  how often *your* pages were shown; the second estimates how often anyone
+  searches the term. They live in different tables (`search_console_queries`
+  vs `keyword_metrics`) and different columns.
+- **Average position is an average.** Search Console reports a mean over the
+  period and over every impression, not a live rank. It is labelled
+  "Avg. Position" everywhere and never presented as a keyword's current
+  standing.
+
+### Setup
+
+**1. Google Cloud (once)**
+
+1. Create a project at [console.cloud.google.com](https://console.cloud.google.com)
+2. Enable the **Google Search Console API** (and the **Google Ads API** only if
+   you intend to use Ads enrichment)
+3. Configure the OAuth consent screen; while it is in *Testing*, add your own
+   Google account under **Test users**
+4. Create credentials → **OAuth client ID** → *Web application*, with this
+   authorized redirect URI, exactly:
+   ```
+   https://<your-project-ref>.supabase.co/functions/v1/google-oauth-callback
+   ```
+5. Set the client ID and secret as Edge Function secrets:
+   ```bash
+   supabase secrets set GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=...
+   ```
+
+**2. Database**
+
+Apply `supabase/migrations/0002_google_search_console.sql`. It is idempotent,
+so re-running it is safe.
+
+**3. Edge Functions**
+
+Deploy `google-search-console`, `google-oauth-callback` and — if you are using
+Ads — `google-ads`.
+
+> **`google-oauth-callback` must have JWT verification disabled.** Google
+> redirects a browser to it with no `Authorization` header. It is safe because
+> it trusts nothing but a single-use `oauth_states` row that binds the callback
+> to the user who started the flow. With the CLI this comes from
+> `supabase/config.toml`; in the dashboard, turn off "Verify JWT" for that
+> function.
+
+**4. In the app**
+
+Settings → **Connect Google** → pick the Search Console property for the
+project → **Sync now**.
+
+### Synchronization
+
+Data is imported on demand rather than fetched from Google on every page view.
+`search_console_syncs` records each run (`pending` / `running` / `completed` /
+`failed`) with its date range, row count and any error, and the connection
+panel shows when the last one finished.
+
+The sync defaults to the `date`, `query` and `page` dimensions. Adding
+`country` and `device` multiplies the row count several-fold, so segmentation
+is opt-in per run via the `dimensions` parameter. Search Console finalizes
+data with a lag, so every window ends three days before today — otherwise the
+most recent days read as a traffic collapse.
+
+Token refresh, retry with exponential backoff on quota and 5xx responses, and
+pagination through `startRow` are handled server-side. A revoked grant deletes
+the stored connection so the UI offers a clean reconnect instead of failing
+repeatedly.
+
+### Opportunity Engine
+
+`src/lib/seo/opportunityEngine.ts` scores keywords deterministically:
+
+```
+Opportunity Score = 100 x RankingPotential x ImpressionWeight x ClickGap
+```
+
+- **RankingPotential** — highest for positions 4-10 (already on page one),
+  lower for deep positions where climbing is unlikely, and low for positions
+  1-3 where little room remains.
+- **ImpressionWeight** — observed demand, log-scaled so large keywords lead
+  without flattening everything else to zero.
+- **ClickGap** — clicks currently missed versus position 3, saturating so a
+  few enormous keywords cannot dominate the list.
+
+The click gap uses a modelled CTR-by-position curve. That curve is a modelling
+assumption, marked as such in the code, and is never rendered as though it
+were measured data. All three inputs are independent constants blocks, so the
+formula can be retuned without side effects.
+
+Recommendations cite only facts the crawler actually recorded — a thin-content
+suggestion quotes the measured word count, and no on-page advice appears at
+all for a page the crawler has not reached.
+
+### What this integration deliberately does not do
+
+Backlink databases, competitor keyword databases and SERP scraping need data
+sources Google does not expose. Those screens continue to report that they
+need an external provider rather than showing invented numbers.
+
+### Tests
+
+```bash
+npm test                                    # unit tests
+psql "$DATABASE_URL" -f supabase/tests/rls.sql   # Row Level Security
+```
+
+The unit suite covers the opportunity scoring properties, recommendation
+grounding, crawler/Search Console URL matching, date-window arithmetic, and
+the Edge Function client contract with Google mocked — no test calls a real
+Google API.
+
+`supabase/tests/rls.sql` verifies the security boundary against a live
+database: refresh tokens are unreadable through the Data API even by their
+owner, users cannot read or write each other's rows, and the aggregation
+functions do not become a way around the policies.

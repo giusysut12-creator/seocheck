@@ -208,7 +208,6 @@ export function GoogleConnectionCard({ projectId, onSynced }: { projectId?: stri
                       onClick={() =>
                         run('sync', async () => {
                           const result = await syncSearchConsole(projectId, range)
-                          if (result.status === 'failed') throw new Error(result.error ?? 'Synchronization failed')
                           setMessage(
                             `Imported ${result.rows_imported ?? 0} rows (${result.date_from} → ${result.date_to}).`,
                           )

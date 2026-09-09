@@ -110,13 +110,17 @@ export async function selectProperty(projectId: string, propertyUrl: string): Pr
   return raw.property
 }
 
+/**
+ * A run that reached Google and stored rows. Any failure — including one the
+ * server recorded as a failed sync row — is raised as an exception carrying a
+ * user-facing message, so callers handle one failure path, not two.
+ */
 export interface SyncResult {
-  status: 'completed' | 'failed'
+  status: 'completed'
   rows_imported?: number
   keywords?: number
   date_from?: string
   date_to?: string
-  error?: string
 }
 
 export async function syncSearchConsole(

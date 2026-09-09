@@ -4,6 +4,15 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useCurrentProject } from '@/hooks/useCurrentProject'
 import type { AuditIssue, Report, SeoOpportunity, SiteAudit } from '@/lib/database.types'
+import {
+  dateWindow,
+  fetchKeywords,
+  fetchPagePerformance,
+  fetchPerformanceSummary,
+  type GscKeywordRow,
+  type GscPageRow,
+  type PerformanceSummary,
+} from '@/lib/google/analytics'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/EmptyState'
@@ -14,6 +23,12 @@ interface ReportData {
   audit: SiteAudit | null
   issues: AuditIssue[]
   opportunities: SeoOpportunity[]
+  /** Search Console figures for the reporting period, when connected. */
+  organic: PerformanceSummary | null
+  topKeywords: GscKeywordRow[]
+  topPages: GscPageRow[]
+  periodFrom: string | null
+  periodTo: string | null
 }
 
 export default function Reports() {
@@ -54,10 +69,24 @@ export default function Reports() {
       .order('opportunity_score', { ascending: false })
       .limit(15)
 
+    // Search Console figures are included when available; a project without
+    // a connection simply reports on the crawl.
+    const window = dateWindow('28d')
+    const [organic, keywordResult, pages] = await Promise.all([
+      fetchPerformanceSummary(id, window).catch(() => null),
+      fetchKeywords(id, window, { sort: 'clicks', direction: 'desc', limit: 25 }).catch(() => ({ rows: [], total: 0 })),
+      fetchPagePerformance(id, window).catch(() => [] as GscPageRow[]),
+    ])
+
     const reportData: ReportData = {
       audit: (audit as SiteAudit) ?? null,
       issues: (issues as AuditIssue[]) ?? [],
       opportunities: (opportunities as SeoOpportunity[]) ?? [],
+      organic: organic && organic.impressions > 0 ? organic : null,
+      topKeywords: keywordResult.rows,
+      topPages: [...pages].sort((a, b) => b.clicks - a.clicks).slice(0, 25),
+      periodFrom: window.from,
+      periodTo: window.to,
     }
 
     const { data: inserted } = await supabase
@@ -106,9 +135,61 @@ export default function Reports() {
       y += 10
     }
 
+    if (data.organic) {
+      doc.setFontSize(12)
+      doc.text('Organic Performance (Google Search Console)', 14, y)
+      y += 7
+      doc.setFontSize(10)
+      doc.text(
+        `${data.periodFrom} to ${data.periodTo}  |  Clicks: ${data.organic.clicks.toLocaleString()}  |  Impressions: ${data.organic.impressions.toLocaleString()}  |  CTR: ${(data.organic.ctr * 100).toFixed(2)}%  |  Avg. position: ${data.organic.position?.toFixed(1) ?? '—'}`,
+        14,
+        y,
+      )
+      y += 10
+
+      if (data.topKeywords.length > 0) {
+        autoTable(doc, {
+          startY: y,
+          head: [['Keyword', 'Clicks', 'Impressions', 'CTR', 'Avg. Position']],
+          body: data.topKeywords.map((k) => [
+            k.keyword,
+            k.clicks.toLocaleString(),
+            k.impressions.toLocaleString(),
+            `${(k.ctr * 100).toFixed(2)}%`,
+            k.position?.toFixed(1) ?? '—',
+          ]),
+          styles: { fontSize: 8 },
+          headStyles: { fillColor: [79, 70, 229] },
+        })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        y = (doc as any).lastAutoTable.finalY + 10
+      }
+
+      if (data.topPages.length > 0) {
+        autoTable(doc, {
+          startY: y,
+          head: [['Page', 'Clicks', 'Impressions', 'Keywords', 'Avg. Position']],
+          body: data.topPages.map((p) => [
+            p.page,
+            p.clicks.toLocaleString(),
+            p.impressions.toLocaleString(),
+            String(p.keyword_count),
+            p.position?.toFixed(1) ?? '—',
+          ]),
+          styles: { fontSize: 8 },
+          headStyles: { fillColor: [79, 70, 229] },
+        })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        y = (doc as any).lastAutoTable.finalY + 10
+      }
+    }
+
     if (data.issues.length > 0) {
+      doc.setFontSize(12)
+      doc.text('Technical Issues (Site Audit crawler)', 14, y)
+      y += 4
       autoTable(doc, {
-        startY: y,
+        startY: y + 4,
         head: [['Priority', 'Issue', 'Affected URLs']],
         body: data.issues.map((i) => [i.priority, i.title, String(i.affected_count)]),
         styles: { fontSize: 8 },

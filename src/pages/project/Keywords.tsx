@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Minus, Search } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Loader2, Minus, Search, Sparkles } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useCurrentProject } from '@/hooks/useCurrentProject'
 import { useGoogleStatus } from '@/hooks/useGoogleStatus'
@@ -11,6 +11,7 @@ import {
   type KeywordSort,
 } from '@/lib/google/analytics'
 import { SYNC_RANGES, type SyncRange } from '@/lib/google/searchConsole'
+import { enrichKeywords } from '@/lib/google/ads'
 import type { KeywordMetric } from '@/lib/database.types'
 import { GoogleConnectionCard } from '@/components/google/GoogleConnectionCard'
 import { EmptyState } from '@/components/EmptyState'
@@ -56,6 +57,9 @@ export default function Keywords() {
   const [adsMetrics, setAdsMetrics] = React.useState<Map<string, KeywordMetric>>(new Map())
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
+  const [enriching, setEnriching] = React.useState(false)
+  const [enrichMessage, setEnrichMessage] = React.useState<string | null>(null)
+  const [reloadToken, setReloadToken] = React.useState(0)
 
   React.useEffect(() => {
     const timer = setTimeout(() => {
@@ -115,7 +119,7 @@ export default function Keywords() {
     return () => {
       cancelled = true
     }
-  }, [id, range, segment, debouncedSearch, sort, direction, page])
+  }, [id, range, segment, debouncedSearch, sort, direction, page, reloadToken])
 
   if (!project) return null
 
@@ -296,7 +300,36 @@ export default function Keywords() {
                 </div>
               </div>
 
-              {!status.adsConfigured && (
+              {status.adsConfigured ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={enriching}
+                    onClick={async () => {
+                      setEnriching(true)
+                      setEnrichMessage(null)
+                      try {
+                        const result = await enrichKeywords(project.id, rows.map((r) => r.keyword))
+                        setEnrichMessage(
+                          result.enriched > 0
+                            ? `Enriched ${result.enriched} keyword${result.enriched === 1 ? '' : 's'} with Google Ads data.`
+                            : 'All these keywords already have recent Google Ads data.',
+                        )
+                        setReloadToken((t) => t + 1)
+                      } catch (err) {
+                        setEnrichMessage(err instanceof Error ? err.message : 'Enrichment failed')
+                      } finally {
+                        setEnriching(false)
+                      }
+                    }}
+                  >
+                    {enriching ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                    Enrich with Google Ads
+                  </Button>
+                  {enrichMessage && <span className="text-xs text-muted-foreground">{enrichMessage}</span>}
+                </div>
+              ) : (
                 <p className="text-xs text-muted-foreground">
                   Connect Google Ads to enrich these keywords with search volume and CPC.
                 </p>
