@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, CheckCircle2, Loader2, PlugZap, ScanSearch, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Loader2, ScanSearch, XCircle } from 'lucide-react'
 import { useCurrentProject } from '@/hooks/useCurrentProject'
 import { useLatestAudit } from '@/hooks/useLatestAudit'
 import { useDomainMetrics, percentChange } from '@/hooks/useDomainMetrics'
@@ -118,19 +118,6 @@ export default function ProjectOverview() {
 
       {audit && audit.status === 'completed' && (
         <>
-          {!latestProvider && (
-            <Card className="border-accent/30 bg-accent/5">
-              <CardContent className="flex items-center gap-3 p-4">
-                <PlugZap className="size-5 shrink-0 text-accent" />
-                <p className="text-sm text-foreground">
-                  Connect an SEO data provider to unlock organic traffic, keyword, and backlink metrics. Only the SEO
-                  Health Score below comes from the built-in crawler — no traffic or ranking numbers are estimated
-                  without a provider.
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <MetricCard
               label="SEO Score"

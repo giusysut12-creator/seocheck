@@ -78,13 +78,19 @@ export function OrganicPerformance({ projectId }: { projectId: string }) {
   const positionDelta =
     current.position !== null && previous?.position != null ? previous.position - current.position : null
 
+  const hasComparison = (previous?.impressions ?? 0) > 0
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-foreground">Organic Performance</h2>
           <p className="text-xs text-muted-foreground">
-            Measured by Google Search Console · compared with the previous {current.days} days
+            {hasComparison
+              ? `Measured by Google Search Console · compared with the previous ${current.days} days`
+              : // A comparison needs the preceding window synchronized too, which
+                // a short first sync will not have covered.
+                `Measured by Google Search Console · sync a longer period to compare with the previous ${current.days} days`}
           </p>
         </div>
         <Tabs value={range} onValueChange={(v) => setRange(v as SyncRange)}>
