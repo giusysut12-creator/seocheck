@@ -15,6 +15,7 @@ import Competitors from '@/pages/project/Competitors'
 import Backlinks from '@/pages/project/Backlinks'
 import Traffic from '@/pages/project/Traffic'
 import Pages from '@/pages/project/Pages'
+import PageDetail from '@/pages/project/PageDetail'
 import Opportunities from '@/pages/project/Opportunities'
 import Reports from '@/pages/project/Reports'
 
@@ -37,6 +38,7 @@ export default function App() {
             <Route path="/projects/:id/backlinks" element={<Backlinks />} />
             <Route path="/projects/:id/traffic" element={<Traffic />} />
             <Route path="/projects/:id/pages" element={<Pages />} />
+            <Route path="/projects/:id/pages/:pageId" element={<PageDetail />} />
             <Route path="/projects/:id/opportunities" element={<Opportunities />} />
             <Route path="/projects/:id/reports" element={<Reports />} />
             <Route path="/settings" element={<Settings />} />

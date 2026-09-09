@@ -1,140 +1,191 @@
 import * as React from 'react'
+import { useNavigate } from 'react-router-dom'
+import { FileText } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useCurrentProject } from '@/hooks/useCurrentProject'
-import type { Page, PageMetric } from '@/lib/database.types'
+import { dateWindow, fetchPagePerformance, type GscPageRow } from '@/lib/google/analytics'
+import { SYNC_RANGES, type SyncRange } from '@/lib/google/searchConsole'
+import type { Page } from '@/lib/database.types'
 import { EmptyState } from '@/components/EmptyState'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog'
-import { formatNumber, formatCurrency } from '@/lib/utils'
-import { FileText } from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { formatNumber } from '@/lib/utils'
 
-type PageWithMetric = Page & { metric: PageMetric | null }
+/**
+ * A page as the product sees it: what the crawler found on it, joined with
+ * what Search Console measured for it. The two sources are matched on the
+ * normalized URL, since the crawler stores raw URLs.
+ */
+export interface MergedPage {
+  /** Present when the crawler has seen this URL. */
+  crawled: Page | null
+  /** Present when Search Console reported traffic for it. */
+  organic: GscPageRow | null
+  url: string
+  urlNormalized: string
+}
+
+export function mergePagesWithOrganic(crawled: Page[], organic: GscPageRow[]): MergedPage[] {
+  const byNormalized = new Map<string, MergedPage>()
+
+  for (const page of crawled) {
+    const key = page.url_normalized ?? page.url.toLowerCase()
+    byNormalized.set(key, { crawled: page, organic: null, url: page.url, urlNormalized: key })
+  }
+
+  for (const row of organic) {
+    const key = row.page_normalized
+    const existing = byNormalized.get(key)
+    if (existing) {
+      existing.organic = row
+    } else {
+      // Search Console knows about a URL the crawler never reached — worth
+      // showing rather than hiding, since it is earning impressions.
+      byNormalized.set(key, { crawled: null, organic: row, url: row.page, urlNormalized: key })
+    }
+  }
+
+  return Array.from(byNormalized.values()).sort(
+    (a, b) => (b.organic?.clicks ?? -1) - (a.organic?.clicks ?? -1),
+  )
+}
+
+/** Technical problems the crawler actually recorded for a page. */
+export function pageIssueCount(page: Page | null): number {
+  if (!page) return 0
+  let count = 0
+  if (!page.title) count++
+  if (!page.meta_description) count++
+  if (page.h1_count === 0 || page.h1_count > 1) count++
+  if (page.images_missing_alt_count > 0) count++
+  if (!page.is_indexable) count++
+  if ((page.status_code ?? 200) >= 400) count++
+  if (page.word_count !== null && page.word_count < 300) count++
+  return count
+}
 
 export default function Pages() {
   const { project, id } = useCurrentProject()
-  const [pages, setPages] = React.useState<PageWithMetric[]>([])
+  const navigate = useNavigate()
+  const [range, setRange] = React.useState<SyncRange>('28d')
+  const [merged, setMerged] = React.useState<MergedPage[]>([])
   const [loading, setLoading] = React.useState(true)
-  const [selected, setSelected] = React.useState<PageWithMetric | null>(null)
+  const [hasOrganic, setHasOrganic] = React.useState(false)
 
   React.useEffect(() => {
     if (!id) return
     let cancelled = false
     async function load() {
       setLoading(true)
-      const { data: pageRows } = await supabase.from('pages').select('*').eq('project_id', id).order('word_count', { ascending: false })
-      const list = (pageRows as Page[]) ?? []
-      const { data: metricRows } = await supabase
-        .from('page_metrics')
-        .select('*')
-        .in('page_id', list.map((p) => p.id))
-        .order('date', { ascending: false })
-      const latestByPage = new Map<string, PageMetric>()
-      for (const m of (metricRows as PageMetric[]) ?? []) {
-        if (!latestByPage.has(m.page_id)) latestByPage.set(m.page_id, m)
-      }
-      const merged = list
-        .map((p) => ({ ...p, metric: latestByPage.get(p.id) ?? null }))
-        .sort((a, b) => (b.metric?.organic_traffic ?? -1) - (a.metric?.organic_traffic ?? -1))
-      if (!cancelled) setPages(merged)
-      if (!cancelled) setLoading(false)
+      const [{ data: crawledRows }, organic] = await Promise.all([
+        supabase.from('pages').select('*').eq('project_id', id!),
+        fetchPagePerformance(id!, dateWindow(range)).catch(() => [] as GscPageRow[]),
+      ])
+      if (cancelled) return
+      setHasOrganic(organic.length > 0)
+      setMerged(mergePagesWithOrganic((crawledRows as Page[]) ?? [], organic))
+      setLoading(false)
     }
     load()
     return () => {
       cancelled = true
     }
-  }, [id])
+  }, [id, range])
 
   if (!project) return null
   if (loading) return <div className="py-16 text-center text-sm text-muted-foreground">Loading pages…</div>
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Pages</h1>
-        <p className="text-sm text-muted-foreground">All URLs discovered by the last Site Audit crawl of {project.domain}.</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold">Pages</h1>
+          <p className="text-sm text-muted-foreground">
+            Crawler findings joined with Search Console performance for {project.domain}.
+          </p>
+        </div>
+        <Select value={range} onValueChange={(v) => setRange(v as SyncRange)}>
+          <SelectTrigger className="w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SYNC_RANGES.map((r) => (
+              <SelectItem key={r.value} value={r.value}>
+                {r.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
-      {pages.length === 0 ? (
+      {merged.length === 0 ? (
         <EmptyState
           icon={<FileText className="size-5" />}
           title="No pages yet"
-          description="Run a Site Audit from the Dashboard to crawl and list your pages here."
+          description="Run a Site Audit to crawl your pages, and sync Search Console to see how they perform in search."
         />
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>URL</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Organic Traffic</TableHead>
-              <TableHead>Keywords</TableHead>
-              <TableHead>Top Keyword</TableHead>
-              <TableHead>Avg. Position</TableHead>
-              <TableHead>Traffic Value</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {pages.map((p) => (
-              <TableRow key={p.id} className="cursor-pointer" onClick={() => setSelected(p)}>
-                <TableCell className="max-w-[320px] truncate text-accent">{p.url}</TableCell>
-                <TableCell>
-                  <Badge variant={p.status_code === 200 ? 'success' : p.status_code && p.status_code >= 400 ? 'destructive' : 'outline'}>
-                    {p.status_code ?? '—'}
-                  </Badge>
-                </TableCell>
-                <TableCell>{formatNumber(p.metric?.organic_traffic ?? null)}</TableCell>
-                <TableCell>{formatNumber(p.metric?.keywords_count ?? null)}</TableCell>
-                <TableCell className="max-w-[160px] truncate text-xs text-muted-foreground">{p.metric?.top_keyword ?? '—'}</TableCell>
-                <TableCell>{p.metric?.avg_position ?? '—'}</TableCell>
-                <TableCell>{formatCurrency(p.metric?.traffic_value ?? null)}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
-
-      <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
-        <DialogContent className="max-w-2xl">
-          {selected && (
-            <>
-              <DialogHeader>
-                <DialogTitle className="break-all text-base">{selected.url}</DialogTitle>
-                <DialogDescription>Crawled {selected.last_crawled_at ? new Date(selected.last_crawled_at).toLocaleString() : '—'}</DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-3 text-sm sm:grid-cols-2">
-                <Field label="Title" value={selected.title} />
-                <Field label="H1" value={selected.h1} />
-                <Field label="Meta Description" value={selected.meta_description} full />
-                <Field label="Canonical" value={selected.canonical} full />
-                <Field label="Status Code" value={String(selected.status_code ?? '—')} />
-                <Field label="Robots Meta" value={selected.robots_meta ?? 'index, follow (default)'} />
-                <Field label="Word Count" value={formatNumber(selected.word_count)} />
-                <Field label="Load Time" value={selected.load_time_ms ? `${selected.load_time_ms} ms` : '—'} />
-                <Field label="Internal Links" value={formatNumber(selected.internal_links_count)} />
-                <Field label="External Links" value={formatNumber(selected.external_links_count)} />
-                <Field label="Images Missing Alt" value={formatNumber(selected.images_missing_alt_count)} />
-                <Field label="Orphan Page" value={selected.is_orphan ? 'Yes' : 'No'} />
-              </div>
-            </>
+        <>
+          {!hasOrganic && (
+            <p className="text-xs text-muted-foreground">
+              Showing crawler data only. Connect and sync Google Search Console to see clicks, impressions and
+              positions for each page.
+            </p>
           )}
-        </DialogContent>
-      </Dialog>
-    </div>
-  )
-}
-
-function Field({ label, value, full }: { label: string; value: string | null; full?: boolean }) {
-  return (
-    <div className={full ? 'sm:col-span-2' : undefined}>
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-0.5 break-words text-foreground">{value || '—'}</p>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>URL</TableHead>
+                <TableHead>Clicks</TableHead>
+                <TableHead>Impressions</TableHead>
+                <TableHead>CTR</TableHead>
+                <TableHead>Avg. Position</TableHead>
+                <TableHead>Keywords</TableHead>
+                <TableHead>Technical</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {merged.map((row) => {
+                const issues = pageIssueCount(row.crawled)
+                return (
+                  <TableRow
+                    key={row.urlNormalized}
+                    className={row.crawled ? 'cursor-pointer' : undefined}
+                    onClick={() => row.crawled && navigate(`/projects/${id}/pages/${row.crawled.id}`)}
+                  >
+                    <TableCell className="max-w-[320px] truncate text-accent">{row.url}</TableCell>
+                    <TableCell>{row.organic ? formatNumber(row.organic.clicks) : '—'}</TableCell>
+                    <TableCell>{row.organic ? formatNumber(row.organic.impressions) : '—'}</TableCell>
+                    <TableCell>{row.organic ? `${(row.organic.ctr * 100).toFixed(2)}%` : '—'}</TableCell>
+                    <TableCell>{row.organic?.position != null ? row.organic.position.toFixed(1) : '—'}</TableCell>
+                    <TableCell>{row.organic ? formatNumber(row.organic.keyword_count) : '—'}</TableCell>
+                    <TableCell>
+                      {!row.crawled ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge variant="outline">not crawled</Badge>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            Search Console reports traffic for this URL, but the crawler has not reached it.
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : issues === 0 ? (
+                        <Badge variant="success">no issues</Badge>
+                      ) : (
+                        <Badge variant="warning">
+                          {issues} issue{issues === 1 ? '' : 's'}
+                        </Badge>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </>
+      )}
     </div>
   )
 }
