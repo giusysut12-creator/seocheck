@@ -30,6 +30,7 @@ export interface Project {
   country: string
   device: Device
   search_engine: string
+  search_console_property_id: string | null
   created_at: string
   updated_at: string
 }
@@ -54,7 +55,7 @@ export interface DomainMetric {
   traffic_value: number | null
   backlinks: number | null
   referring_domains: number | null
-  source: 'provider' | 'crawler'
+  source: 'provider' | 'crawler' | 'google_search_console'
   created_at: string
   updated_at: string
 }
@@ -72,7 +73,7 @@ export interface Keyword {
   search_intent: SearchIntent | null
   is_branded: boolean
   is_tracked: boolean
-  source: 'provider' | 'manual'
+  source: 'provider' | 'manual' | 'google_search_console'
   created_at: string
   updated_at: string
 }
@@ -87,6 +88,7 @@ export interface KeywordRanking {
   url: string | null
   serp_features: string[]
   traffic_estimate: number | null
+  source: 'provider' | 'manual' | 'google_search_console'
   created_at: string
   updated_at: string
 }
@@ -96,6 +98,7 @@ export interface Page {
   project_id: string
   domain_id: string | null
   url: string
+  url_normalized: string | null
   title: string | null
   meta_description: string | null
   h1: string | null
@@ -275,6 +278,67 @@ export interface Report {
   period_end: string | null
   data: Record<string, unknown>
   status: 'generating' | 'ready' | 'failed'
+  created_at: string
+  updated_at: string
+}
+
+// --- Google Search Console / Google Ads (migration 0002) ---------------------
+
+export type MetricSource = 'crawler' | 'google_search_console' | 'google_ads' | 'provider'
+export type SyncStatus = 'pending' | 'running' | 'completed' | 'failed'
+export type Competition = 'LOW' | 'MEDIUM' | 'HIGH' | 'UNSPECIFIED' | 'UNKNOWN'
+
+/** Never exposed to the browser: holds the Google refresh token. */
+export interface SearchConsoleProperty {
+  id: string
+  connection_id: string
+  property_url: string
+  property_type: 'domain' | 'url_prefix'
+  permission_level: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface SearchConsoleQuery {
+  id: string
+  project_id: string
+  property_id: string | null
+  date: string
+  query: string
+  page: string
+  page_normalized: string | null
+  country: string
+  device: string
+  clicks: number
+  impressions: number
+  ctr: number
+  position: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface SearchConsoleSync {
+  id: string
+  project_id: string
+  status: SyncStatus
+  date_from: string | null
+  date_to: string | null
+  rows_imported: number
+  error_message: string | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface KeywordMetric {
+  id: string
+  keyword_id: string
+  source: 'google_ads' | 'provider'
+  search_volume: number | null
+  cpc: number | null
+  competition: Competition | null
+  competition_index: number | null
   created_at: string
   updated_at: string
 }

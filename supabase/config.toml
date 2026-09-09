@@ -30,3 +30,15 @@ verify_jwt = false
 
 [functions.ai-assistant]
 verify_jwt = false
+
+[functions.google-search-console]
+verify_jwt = false
+
+# Google redirects a browser here after consent, with no Authorization header,
+# so JWT verification must stay off. The function trusts only the one-time
+# state row it looks up itself.
+[functions.google-oauth-callback]
+verify_jwt = false
+
+[functions.google-ads]
+verify_jwt = false
