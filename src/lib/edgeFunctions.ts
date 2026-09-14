@@ -6,6 +6,9 @@ export interface CrawlSiteResponse {
   status: 'completed' | 'failed'
   pages_crawled?: number
   seo_score?: number
+  /** The crawl stopped at its time budget with URLs still queued. */
+  truncated?: boolean
+  urls_pending?: number
   error?: string
 }
 
@@ -21,6 +24,9 @@ async function describeInvokeError(error: unknown): Promise<string> {
   if (error instanceof FunctionsHttpError) {
     const status = error.context?.status
     if (status === 404) return NOT_DEPLOYED
+    if (status === 546) {
+      return 'The crawl ran past the time the platform allows for a single request. Try again — the crawler now stops early and saves what it found.'
+    }
     const body = await error.context?.json?.().catch(() => null)
     if (body?.error) return body.error as string
     return `The crawler returned an error (HTTP ${status ?? 'unknown'}).`

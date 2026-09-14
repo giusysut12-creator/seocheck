@@ -33,12 +33,18 @@ export function RescanButton({
     setError(null)
 
     setPhase('crawling')
-    const { error: crawlError } = await startCrawl(projectId)
+    const { data: crawl, error: crawlError } = await startCrawl(projectId)
     if (crawlError) {
       setPhase('idle')
       setError(crawlError)
       return
     }
+
+    // A crawl that stopped at its time budget covered part of the site, which
+    // is worth saying plainly rather than presenting as a full audit.
+    const coverage = crawl?.truncated
+      ? `Crawled ${crawl.pages_crawled ?? 0} pages before reaching the time limit, with ${crawl.urls_pending ?? 0} still queued — run it again to continue.`
+      : `Crawled ${crawl?.pages_crawled ?? 0} pages.`
 
     let syncedNote = ''
     if (syncSearchConsoleToo) {
@@ -53,7 +59,7 @@ export function RescanButton({
     }
 
     setPhase('idle')
-    setResult(`Pages re-crawled — on-page changes are reflected below.${syncedNote}`)
+    setResult(`${coverage} On-page changes are reflected below.${syncedNote}`)
     onDone()
   }
 

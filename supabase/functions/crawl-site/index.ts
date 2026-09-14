@@ -674,9 +674,17 @@ export function buildCrawlerOpportunities(pages: CrawledPageResult[]): Opportuni
 export { CATEGORY_KEYS }
 
 const MAX_URLS = 100
-const FETCH_TIMEOUT_MS = 10_000
-const CONCURRENCY = 5
-const DEFAULT_DELAY_MS = 150
+const FETCH_TIMEOUT_MS = 8_000
+const CONCURRENCY = 8
+const DEFAULT_DELAY_MS = 100
+
+/**
+ * Supabase terminates an Edge Function that outruns its wall-clock budget,
+ * and a terminated run saves nothing at all. Stopping short of that leaves a
+ * partial audit, which is worth far more than a failed one. Kept well under
+ * the platform ceiling so the writes that follow the crawl still have room.
+ */
+const MAX_RUNTIME_MS = 100_000
 const USER_AGENT = 'RankPilotBot/1.0 (+https://rankpilot.app/bot)'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -871,7 +879,14 @@ Deno.serve(async (req) => {
     let cursor = 0
     let urlsErrored = 0
 
+    const crawlDeadline = Date.now() + MAX_RUNTIME_MS
+    let truncated = false
+
     while (cursor < toVisit.length && visited.size < MAX_URLS) {
+      if (Date.now() > crawlDeadline) {
+        truncated = true
+        break
+      }
       const batch = toVisit.slice(cursor, cursor + CONCURRENCY).filter((u) => !visited.has(normalize(u)))
       cursor += CONCURRENCY
       if (batch.length === 0) continue
@@ -1002,11 +1017,16 @@ Deno.serve(async (req) => {
       else await sleep(DEFAULT_DELAY_MS)
     }
 
-    // Orphan detection: pages seeded from the sitemap that no crawled page links to.
-    const homepageNorm = normalize(base.toString())
-    for (const r of results) {
-      if (normalize(r.url) === homepageNorm) continue
-      r.isOrphan = !linkedFrom.has(normalize(r.url))
+    // Orphan detection: pages seeded from the sitemap that no crawled page
+    // links to. Only meaningful over a complete crawl — after an early stop,
+    // a page whose only inbound link lives on a page we never reached would
+    // be reported as orphaned when it is not.
+    if (!truncated) {
+      const homepageNorm = normalize(base.toString())
+      for (const r of results) {
+        if (normalize(r.url) === homepageNorm) continue
+        r.isOrphan = !linkedFrom.has(normalize(r.url))
+      }
     }
 
     const issues = buildAuditIssues(results)
@@ -1055,7 +1075,7 @@ Deno.serve(async (req) => {
       .from('site_audits')
       .update({
         status: 'completed',
-        urls_total: results.length,
+        urls_total: truncated ? Math.min(seenQueue.size, MAX_URLS) : results.length,
         urls_crawled: results.length,
         urls_errored: urlsErrored,
         finished_at: new Date().toISOString(),
@@ -1101,6 +1121,8 @@ Deno.serve(async (req) => {
       site_audit_id: audit.id,
       status: 'completed',
       pages_crawled: results.length,
+      truncated,
+      urls_pending: truncated ? Math.max(0, Math.min(seenQueue.size, MAX_URLS) - results.length) : 0,
       ...score,
     })
   } catch (err) {
