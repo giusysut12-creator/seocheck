@@ -46,7 +46,8 @@ export function RescanButton({
     })
     if (crawlError) {
       setPhase('idle')
-      setProgress(null)
+      // The count stays on screen: the crawl is resumable, so what it reached
+      // before stopping is the useful half of the answer.
       setError(crawlError)
       return
     }
@@ -86,7 +87,12 @@ export function RescanButton({
             : 'Rescan'}
       </Button>
       {result && <p className="max-w-md text-right text-xs text-success">{result}</p>}
-      {error && <p className="max-w-md text-right text-xs text-destructive">{error}</p>}
+      {error && (
+        <div className="max-w-md text-right">
+          <p className="text-xs text-destructive">{error}</p>
+          {progress && <p className="text-xs text-muted-foreground">Reached {progress} before stopping.</p>}
+        </div>
+      )}
     </div>
   )
 }

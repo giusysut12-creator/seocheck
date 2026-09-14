@@ -691,7 +691,7 @@ const DEFAULT_DELAY_MS = 100
  * enough to finish comfortably and reports whether more remains. The client
  * calls back until the crawl is done.
  */
-const CHUNK_SIZE = 20
+const CHUNK_SIZE = 10
 
 /** A run older than this is stale; a new request starts a fresh audit. */
 const RESUME_WINDOW_MS = 30 * 60 * 1000
@@ -703,8 +703,23 @@ const RESUME_WINDOW_MS = 30 * 60 * 1000
  * Rather than ignoring the directive, the slice simply ends and the next call
  * carries on.
  */
-const SLICE_BUDGET_MS = 60_000
+const SLICE_BUDGET_MS = 25_000
 const USER_AGENT = 'RankPilotBot/1.0 (+https://rankpilot.app/bot)'
+
+/**
+ * Cap on how much of a response is read into memory. A page's SEO signals sit
+ * in the head and the markup around it; a megabyte covers that with room to
+ * spare, and refusing to buffer more keeps one oversized file from costing the
+ * whole run.
+ */
+const MAX_HTML_BYTES = 1_000_000
+
+/**
+ * Links that are plainly not pages. Following them wastes a request and, worse,
+ * pulls a file of unbounded size into a worker that has a memory budget.
+ */
+const NON_PAGE_EXTENSION =
+  /\.(jpe?g|png|gif|webp|svg|ico|bmp|avif|css|js|mjs|map|json|xml|rss|atom|pdf|zip|rar|7z|gz|tar|mp[34]|m4a|wav|webm|avi|mov|mkv|woff2?|ttf|otf|eot|csv|xlsx?|docx?|pptx?|exe|dmg|apk)(?:$|\?)/i
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -721,6 +736,58 @@ interface FetchResult {
   finalUrl: string | null
 }
 
+/**
+ * Releases a response whose body we are not going to read.
+ *
+ * Leaving a body unread is not free: the connection and the buffers behind it
+ * stay alive until the runtime collects them. An edge worker serves many
+ * requests before it is recycled, so on a site with plenty of redirects and
+ * non-HTML links those abandoned bodies pile up until the worker is killed for
+ * exceeding its memory budget — which reads, from the outside, as the crawler
+ * failing for no reason. Every path out of a fetch now ends the body.
+ */
+async function discard(res: Response): Promise<void> {
+  try {
+    await res.body?.cancel()
+  } catch {
+    // A body that is already closed or errored needs nothing from us.
+  }
+}
+
+/**
+ * Reads at most `limit` bytes of a body, then drops the rest, so a single
+ * oversized URL cannot exhaust the worker's memory.
+ */
+async function readCapped(res: Response, limit: number): Promise<string> {
+  if (!res.body) return ''
+  const reader = res.body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  try {
+    while (size < limit) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (value) {
+        chunks.push(value)
+        size += value.byteLength
+      }
+    }
+  } finally {
+    try {
+      await reader.cancel()
+    } catch {
+      // Already finished; nothing left to release.
+    }
+  }
+  const buf = new Uint8Array(size)
+  let offset = 0
+  for (const chunk of chunks) {
+    buf.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return new TextDecoder('utf-8', { fatal: false }).decode(buf)
+}
+
 async function timedFetch(url: string, options: { follow?: boolean } = {}): Promise<FetchResult> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
@@ -734,6 +801,7 @@ async function timedFetch(url: string, options: { follow?: boolean } = {}): Prom
     const loadTimeMs = Math.round(performance.now() - start)
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get('location')
+      await discard(res)
       return {
         statusCode: res.status,
         redirectUrl: location,
@@ -746,7 +814,11 @@ async function timedFetch(url: string, options: { follow?: boolean } = {}): Prom
     }
     const contentType = res.headers.get('content-type')
     const isHtml = !contentType || contentType.includes('text/html') || contentType.includes('application/xhtml')
-    const html = isHtml ? await res.text() : null
+    if (!isHtml) {
+      await discard(res)
+      return { statusCode: res.status, redirectUrl: null, html: null, contentType, loadTimeMs, error: null, finalUrl: res.url || url }
+    }
+    const html = await readCapped(res, MAX_HTML_BYTES)
     return { statusCode: res.status, redirectUrl: null, html, contentType, loadTimeMs, error: null, finalUrl: res.url || url }
   } catch (err) {
     const loadTimeMs = Math.round(performance.now() - start)
@@ -881,18 +953,35 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const homepage = await resolveHomepage(project.domain)
-    if (!homepage || homepage.result.error) {
-      const message = homepage?.result.error ?? 'Domain unreachable'
+    // Resolving the homepage and reading robots.txt costs two round trips, and
+    // the answers cannot change mid-run. A resumed slice reuses what the first
+    // one worked out and spends its whole budget on pages instead.
+    const saved = (audit.crawl_context ?? null) as { base?: string; robots?: RobotsRules } | null
+    const savedBase = saved?.base ? safeUrl(saved.base) : null
+
+    let base: URL
+    let robots: RobotsRules
+    if (savedBase && saved?.robots) {
+      base = savedBase
+      robots = saved.robots
+    } else {
+      const homepage = await resolveHomepage(project.domain)
+      if (!homepage || homepage.result.error) {
+        const message = homepage?.result.error ?? 'Domain unreachable'
+        await db
+          .from('site_audits')
+          .update({ status: 'failed', error_message: message, finished_at: new Date().toISOString() })
+          .eq('id', audit.id)
+        return jsonResponse({ error: message, site_audit_id: audit.id }, 200)
+      }
+      base = homepage.base
+      robots = await fetchRobots(base)
+      // Best effort: a database that predates the column just re-resolves.
       await db
         .from('site_audits')
-        .update({ status: 'failed', error_message: message, finished_at: new Date().toISOString() })
+        .update({ crawl_context: { base: base.toString(), robots } })
         .eq('id', audit.id)
-      return jsonResponse({ error: message, site_audit_id: audit.id }, 200)
     }
-
-    const { base } = homepage
-    const robots = await fetchRobots(base)
 
     // Sitemaps cost up to a dozen round trips; once a run has a frontier
     // there is nothing new to learn from re-reading them every slice.
@@ -902,6 +991,7 @@ Deno.serve(async (req) => {
     const queue: string[] = [base.toString()]
     for (const u of sitemapUrls) {
       const resolved = safeUrl(u)
+      if (resolved && NON_PAGE_EXTENSION.test(resolved.pathname)) continue
       if (resolved && resolved.hostname.replace(/^www\./, '') === base.hostname.replace(/^www\./, '')) {
         queue.push(resolved.toString())
       }
@@ -930,6 +1020,25 @@ Deno.serve(async (req) => {
     let cursor = 0
     let urlsErrored = 0
     let crawledThisRun = 0
+
+    const auditId = audit.id
+    const domainId = domainRow?.id ?? null
+
+    // What the run knows so far. Written after every batch rather than at the
+    // end, so a slice that is cut short still leaves the next one further
+    // ahead than it found things.
+    const saveFrontier = async () => {
+      await db
+        .from('site_audits')
+        .update({
+          urls_crawled: visited.size,
+          urls_total: Math.min(discovered.size, MAX_URLS),
+          urls_errored: urlsErrored,
+          discovered_urls: Array.from(discovered.values()),
+          linked_urls: Array.from(linkedFrom),
+        })
+        .eq('id', auditId)
+    }
 
     const sliceDeadline = Date.now() + SLICE_BUDGET_MS
     const crawlDelayMs = (robots.crawlDelaySeconds ?? 0) * 1000
@@ -1007,6 +1116,7 @@ Deno.serve(async (req) => {
             for (const link of parsed.internalLinks) {
               const linkNorm = normalize(link)
               linkedFrom.add(linkNorm)
+              if (NON_PAGE_EXTENSION.test(linkNorm)) continue
               if (!discovered.has(linkNorm) && discovered.size < MAX_URLS * 2) {
                 discovered.set(linkNorm, link)
               }
@@ -1054,7 +1164,22 @@ Deno.serve(async (req) => {
         }),
       )
 
-      for (const r of batchResults) if (r) results.push(r)
+      const batchRows: CrawledPageResult[] = []
+      for (const r of batchResults) {
+        if (!r) continue
+        batchRows.push(r)
+        results.push(r)
+      }
+
+      // Commit as each batch lands. A worker that is stopped part-way through
+      // a slice used to lose the whole slice; now the pages already fetched
+      // are on record and the next call resumes behind them.
+      if (batchRows.length > 0) {
+        await db
+          .from('pages')
+          .upsert(batchRows.map((r) => toPageRow(projectId, domainId, r)), { onConflict: 'project_id,url' })
+      }
+      await saveFrontier()
 
       // Ending the slice beats sleeping past its budget: the next call
       // resumes, and the site still gets the pause it asked for.
@@ -1063,56 +1188,21 @@ Deno.serve(async (req) => {
       await sleep(pause)
     }
 
-    const pageRows = results.map((r) => ({
-      project_id: projectId,
-      domain_id: domainRow?.id ?? null,
-      url: r.url,
-      title: r.title,
-      meta_description: r.metaDescription,
-      h1: r.h1[0] ?? null,
-      h1_count: r.h1.length,
-      h2_count: r.h2Count,
-      canonical: r.canonical,
-      robots_meta: r.robotsMeta,
-      status_code: r.statusCode,
-      redirect_url: r.redirectUrl,
-      is_indexable: !(r.robotsMeta?.includes('noindex') ?? false),
-      is_https: r.isHttps,
-      word_count: r.wordCount,
-      internal_links_count: r.internalLinksCount,
-      external_links_count: r.externalLinksCount,
-      images_missing_alt_count: r.imagesMissingAlt,
-      load_time_ms: r.loadTimeMs,
-      is_orphan: r.isOrphan,
-      last_crawled_at: new Date().toISOString(),
-    }))
-
-    if (pageRows.length > 0) {
-      await db.from('pages').upsert(pageRows, { onConflict: 'project_id,url' })
-    }
-
     for (const r of results) visited.add(normalize(r.url))
+    await saveFrontier()
 
     const remaining = Array.from(discovered.keys()).filter((u) => !visited.has(u)).length
     const moreToCrawl = remaining > 0 && visited.size < MAX_URLS
     const totalPlanned = Math.min(discovered.size, MAX_URLS)
 
-    // Carry the run's frontier and link graph forward, so the next call
-    // resumes instead of rediscovering.
-    await db
-      .from('site_audits')
-      .update({
-        urls_crawled: visited.size,
-        urls_total: totalPlanned,
-        urls_errored: urlsErrored,
-        discovered_urls: Array.from(discovered.values()),
-        linked_urls: Array.from(linkedFrom),
-      })
-      .eq('id', audit.id)
-
-    if (moreToCrawl) {
+    // Scoring the audit reads every page of the run and writes issues,
+    // opportunities and metrics — too much to tack onto a slice that has just
+    // spent its budget fetching. A slice that crawled anything therefore hands
+    // back to the client, and the call after it arrives with nothing left to
+    // fetch and the whole budget for finalizing.
+    if (moreToCrawl || crawledThisRun > 0) {
       return jsonResponse({
-        site_audit_id: audit.id,
+        site_audit_id: auditId,
         status: 'crawling',
         pages_crawled: visited.size,
         urls_pending: remaining,
@@ -1255,6 +1345,33 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: message, site_audit_id: audit.id }, 200)
   }
 })
+
+/** Shapes one crawl result for the `pages` table. */
+function toPageRow(projectId: string, domainId: string | null, r: CrawledPageResult) {
+  return {
+    project_id: projectId,
+    domain_id: domainId,
+    url: r.url,
+    title: r.title,
+    meta_description: r.metaDescription,
+    h1: r.h1[0] ?? null,
+    h1_count: r.h1.length,
+    h2_count: r.h2Count,
+    canonical: r.canonical,
+    robots_meta: r.robotsMeta,
+    status_code: r.statusCode,
+    redirect_url: r.redirectUrl,
+    is_indexable: !(r.robotsMeta?.includes('noindex') ?? false),
+    is_https: r.isHttps,
+    word_count: r.wordCount,
+    internal_links_count: r.internalLinksCount,
+    external_links_count: r.externalLinksCount,
+    images_missing_alt_count: r.imagesMissingAlt,
+    load_time_ms: r.loadTimeMs,
+    is_orphan: r.isOrphan,
+    last_crawled_at: new Date().toISOString(),
+  }
+}
 
 function normalize(url: string): string {
   try {
