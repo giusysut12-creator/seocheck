@@ -9,6 +9,8 @@ export interface CrawlSiteResponse {
   seo_score?: number
   urls_pending?: number
   urls_total?: number
+  /** A Crawl-delay the site's robots.txt asks crawlers to respect. */
+  crawl_delay_seconds?: number
   error?: string
 }
 
@@ -16,6 +18,8 @@ export interface CrawlProgress {
   crawled: number
   pending: number
   total: number
+  /** Non-zero when the site asks crawlers to pause between requests. */
+  crawlDelaySeconds: number
 }
 
 /**
@@ -68,6 +72,7 @@ export async function startCrawl(
       crawled: last.pages_crawled ?? 0,
       pending: last.urls_pending ?? 0,
       total: last.urls_total ?? last.pages_crawled ?? 0,
+      crawlDelaySeconds: last.crawl_delay_seconds ?? 0,
     })
 
     if (last.status !== 'crawling') return { data: last, error: null }

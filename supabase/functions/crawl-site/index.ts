@@ -203,8 +203,14 @@ export function isAllowedByRobots(path: string, rules: RobotsRules): boolean {
   return false
 }
 
-export function extractSitemapLocs(xml: string): string[] {
-  return matchAll(/<loc>([\s\S]*?)<\/loc>/gi, xml).map((s) => decodeEntities(s.trim()))
+export function extractSitemapLocs(xml: string, limit = 500): string[] {
+  const out: string[] = []
+  const re = /<loc>([\s\S]*?)<\/loc>/gi
+  let m: RegExpExecArray | null
+  while ((m = re.exec(xml)) && out.length < limit) {
+    out.push(decodeEntities(m[1].trim()))
+  }
+  return out
 }
 
 // --- inlined from _shared/audit.ts ---
@@ -689,6 +695,15 @@ const CHUNK_SIZE = 20
 
 /** A run older than this is stale; a new request starts a fresh audit. */
 const RESUME_WINDOW_MS = 30 * 60 * 1000
+
+/**
+ * Wall-clock budget for one slice. Waiting dominates a crawl — a site that
+ * declares a Crawl-delay makes the crawler sleep between batches, and honoring
+ * a 30-second delay would blow any request budget long before the work does.
+ * Rather than ignoring the directive, the slice simply ends and the next call
+ * carries on.
+ */
+const SLICE_BUDGET_MS = 60_000
 const USER_AGENT = 'RankPilotBot/1.0 (+https://rankpilot.app/bot)'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -878,7 +893,11 @@ Deno.serve(async (req) => {
 
     const { base } = homepage
     const robots = await fetchRobots(base)
-    const sitemapUrls = await fetchSitemapUrls(base, robots)
+
+    // Sitemaps cost up to a dozen round trips; once a run has a frontier
+    // there is nothing new to learn from re-reading them every slice.
+    const alreadyDiscovered = ((audit.discovered_urls ?? []) as string[]).length > 0
+    const sitemapUrls = alreadyDiscovered ? [] : await fetchSitemapUrls(base, robots)
 
     const queue: string[] = [base.toString()]
     for (const u of sitemapUrls) {
@@ -912,7 +931,11 @@ Deno.serve(async (req) => {
     let urlsErrored = 0
     let crawledThisRun = 0
 
+    const sliceDeadline = Date.now() + SLICE_BUDGET_MS
+    const crawlDelayMs = (robots.crawlDelaySeconds ?? 0) * 1000
+
     while (cursor < toVisit.length && visited.size < MAX_URLS && crawledThisRun < CHUNK_SIZE) {
+      if (Date.now() > sliceDeadline) break
       const batch = toVisit.slice(cursor, cursor + CONCURRENCY).filter((u) => !visited.has(normalize(u)))
       cursor += CONCURRENCY
       if (batch.length === 0) continue
@@ -1033,8 +1056,11 @@ Deno.serve(async (req) => {
 
       for (const r of batchResults) if (r) results.push(r)
 
-      if (robots.crawlDelaySeconds) await sleep(robots.crawlDelaySeconds * 1000)
-      else await sleep(DEFAULT_DELAY_MS)
+      // Ending the slice beats sleeping past its budget: the next call
+      // resumes, and the site still gets the pause it asked for.
+      const pause = crawlDelayMs || DEFAULT_DELAY_MS
+      if (Date.now() + pause > sliceDeadline) break
+      await sleep(pause)
     }
 
     const pageRows = results.map((r) => ({
@@ -1091,6 +1117,7 @@ Deno.serve(async (req) => {
         pages_crawled: visited.size,
         urls_pending: remaining,
         urls_total: totalPlanned,
+        crawl_delay_seconds: robots.crawlDelaySeconds ?? 0,
       })
     }
 

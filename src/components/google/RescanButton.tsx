@@ -35,8 +35,14 @@ export function RescanButton({
 
     setPhase('crawling')
     setProgress(null)
+    let slowNote = ''
     const { data: crawl, error: crawlError } = await startCrawl(projectId, (p) => {
       setProgress(p.pending > 0 ? `${p.crawled} of ${p.total} pages` : `${p.crawled} pages`)
+      // Worth explaining: a site asking for a pause between requests makes
+      // the crawl legitimately slow, and that is not a fault to hide.
+      if (p.crawlDelaySeconds > 0) {
+        slowNote = ` Your robots.txt asks crawlers to wait ${p.crawlDelaySeconds}s between requests, so this takes a while.`
+      }
     })
     if (crawlError) {
       setPhase('idle')
@@ -45,7 +51,7 @@ export function RescanButton({
       return
     }
 
-    const coverage = `Crawled ${crawl?.pages_crawled ?? 0} pages.`
+    const coverage = `Crawled ${crawl?.pages_crawled ?? 0} pages.${slowNote}`
 
     let syncedNote = ''
     if (syncSearchConsoleToo) {
