@@ -79,14 +79,23 @@ RLS) after independently verifying the caller owns the project.
 
 ### Internal (Supabase Edge Functions, Deno)
 
-- **`crawl-site`** — `POST { project_id }`. Verifies the caller owns the
-  project, fetches `robots.txt` + `sitemap.xml`, crawls up to 100 same-origin
-  URLs (5 concurrent, respects `crawl-delay`, 10s timeout per request, avoids
-  loops via a visited-set), parses each page's HTML with a dependency-free
-  regex-based analyzer, computes prioritized audit issues + a 0-100 SEO Health
-  Score (Technical / On-page / Performance / Indexability / Content /
-  Backlinks), and persists `pages`, `audit_issues`, `site_audits`,
+- **`crawl-site`** — `POST { project_id, max_pages? }`. Verifies the caller
+  owns the project, fetches `robots.txt` + `sitemap.xml`, crawls up to 100
+  same-origin URLs (4 concurrent, respects `crawl-delay`, 8s timeout per
+  request, avoids loops via a visited-set), parses each page's HTML with a
+  dependency-free regex-based analyzer, computes prioritized audit issues + a
+  0-100 SEO Health Score (Technical / On-page / Performance / Indexability /
+  Content / Backlinks), and persists `pages`, `audit_issues`, `site_audits`,
   crawler-derived `seo_opportunities`, and a `domain_metrics` snapshot.
+
+  One call crawls a slice and returns `status: 'crawling'` while URLs remain;
+  `src/lib/edgeFunctions.ts` calls back until it is done. `max_pages` sizes
+  that slice — the client lowers it whenever Supabase stops a worker and
+  raises it again on success, so a run settles at whatever the project's plan
+  allows rather than at a number hard-coded here. Each batch is committed as
+  it lands, so a stopped worker costs no work, and the function imports
+  nothing: it talks to PostgREST over `fetch`, because loading
+  `@supabase/supabase-js` cost more CPU than the crawling did.
 - **`seo-provider-proxy`** — `POST { action, params }`. Server-side adapter
   implementing the `SEODataProvider` interface against `SEO_API_URL` /
   `SEO_API_KEY`. Returns `{ configured: false }` when unset instead of

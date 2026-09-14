@@ -9,7 +9,180 @@
 //
 // Invoke with: POST { project_id: string }, Authorization: Bearer <user JWT>
 
-import { createClient } from 'npm:@supabase/supabase-js@2.45.4'
+// --- database access ---------------------------------------------------
+//
+// The crawler used to reach the database through npm:@supabase/supabase-js.
+// On Supabase's edge runtime the cost of that import is charged to whichever
+// request loads it: resolving the package and compiling it, plus its auth,
+// realtime and storage clients, spent most of the 2-second CPU budget before
+// a single page was fetched. The platform's own log said so — "CPU Time
+// exceeded", 2.78s of CPU against 30MB of memory — which is why making each
+// slice smaller never helped: the cost was in starting up, not in crawling.
+//
+// Everything the crawler does is a table read or write, and PostgREST exposes
+// those over plain HTTP. So it speaks HTTP, and imports nothing.
+
+type Row = Record<string, unknown>
+
+interface Outcome<T> {
+  data: T | null
+  error: { message: string } | null
+}
+
+/** Encodes one PostgREST `in.(…)` operand, which is quoted and escaped. */
+function quoteForIn(value: unknown): string {
+  return `"${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+}
+
+/**
+ * A request under construction. The shape mirrors the handful of calls the
+ * crawler makes, so the code reading and writing rows did not have to change.
+ */
+// deno-lint-ignore no-explicit-any
+class Query<T = any> implements PromiseLike<Outcome<T>> {
+  private method = 'GET'
+  private columns: string | null = null
+  private readonly params: string[] = []
+  private readonly prefer: string[] = []
+  /** Whether the write should hand the rows back; one value, not two. */
+  private returning: 'minimal' | 'representation' = 'minimal'
+  private payload: unknown = null
+  private rows: 'many' | 'one' | 'maybe' = 'many'
+
+  constructor(
+    private readonly baseUrl: string,
+    private readonly table: string,
+    private readonly headers: Record<string, string>,
+  ) {}
+
+  select(columns = '*'): this {
+    this.columns = columns
+    if (this.method !== 'GET') this.returning = 'representation'
+    return this
+  }
+
+  insert(rows: Row | Row[]): this {
+    this.method = 'POST'
+    this.payload = rows
+    return this
+  }
+
+  upsert(rows: Row | Row[], options?: { onConflict?: string }): this {
+    this.method = 'POST'
+    this.payload = rows
+    this.prefer.push('resolution=merge-duplicates')
+    if (options?.onConflict) this.params.push(`on_conflict=${encodeURIComponent(options.onConflict)}`)
+    return this
+  }
+
+  update(patch: Row): this {
+    this.method = 'PATCH'
+    this.payload = patch
+    return this
+  }
+
+  delete(): this {
+    this.method = 'DELETE'
+    return this
+  }
+
+  eq(column: string, value: unknown): this {
+    this.params.push(`${column}=eq.${encodeURIComponent(String(value))}`)
+    return this
+  }
+
+  gte(column: string, value: unknown): this {
+    this.params.push(`${column}=gte.${encodeURIComponent(String(value))}`)
+    return this
+  }
+
+  in(column: string, values: unknown[]): this {
+    this.params.push(`${column}=in.${encodeURIComponent(`(${values.map(quoteForIn).join(',')})`)}`)
+    return this
+  }
+
+  order(column: string, options?: { ascending?: boolean }): this {
+    this.params.push(`order=${encodeURIComponent(`${column}.${options?.ascending === false ? 'desc' : 'asc'}`)}`)
+    return this
+  }
+
+  limit(count: number): this {
+    this.params.push(`limit=${count}`)
+    return this
+  }
+
+  single(): this {
+    this.rows = 'one'
+    return this
+  }
+
+  maybeSingle(): this {
+    this.rows = 'maybe'
+    return this
+  }
+
+  private async run(): Promise<Outcome<T>> {
+    const params = [...this.params]
+    if (this.columns) params.push(`select=${encodeURIComponent(this.columns)}`)
+    const headers: Record<string, string> = { ...this.headers }
+    if (this.payload !== null) headers['Content-Type'] = 'application/json'
+    const prefer = this.method === 'GET' ? this.prefer : [...this.prefer, `return=${this.returning}`]
+    if (prefer.length > 0) headers['Prefer'] = prefer.join(',')
+
+    const res = await fetch(
+      `${this.baseUrl}/rest/v1/${this.table}${params.length > 0 ? `?${params.join('&')}` : ''}`,
+      {
+        method: this.method,
+        headers,
+        body: this.payload === null ? undefined : JSON.stringify(this.payload),
+      },
+    )
+    // Reading the body to the end also releases the connection, which matters
+    // on a worker that serves many of these.
+    const text = await res.text()
+    if (!res.ok) return { data: null, error: { message: text || `HTTP ${res.status}` } }
+
+    let parsed: unknown = null
+    if (text) {
+      try {
+        parsed = JSON.parse(text)
+      } catch {
+        parsed = null
+      }
+    }
+    if (this.rows === 'many') return { data: (parsed ?? []) as T, error: null }
+
+    const returned = Array.isArray(parsed) ? parsed : parsed === null ? [] : [parsed]
+    if (returned.length === 0) {
+      return this.rows === 'one' ? { data: null, error: { message: 'No rows returned' } } : { data: null, error: null }
+    }
+    return { data: returned[0] as T, error: null }
+  }
+
+  then<R1 = Outcome<T>, R2 = never>(
+    onfulfilled?: ((value: Outcome<T>) => R1 | PromiseLike<R1>) | null,
+    onrejected?: ((reason: unknown) => R2 | PromiseLike<R2>) | null,
+  ): PromiseLike<R1 | R2> {
+    return this.run().then(onfulfilled, onrejected)
+  }
+}
+
+function restClient(baseUrl: string, headers: Record<string, string>) {
+  // deno-lint-ignore no-explicit-any
+  return { from: <T = any>(table: string) => new Query<T>(baseUrl, table, headers) }
+}
+
+/** Who the caller is, according to the JWT they sent. */
+async function fetchUser(baseUrl: string, anonKey: string, authHeader: string): Promise<{ id: string } | null> {
+  const res = await fetch(`${baseUrl}/auth/v1/user`, { headers: { apikey: anonKey, Authorization: authHeader } })
+  const text = await res.text()
+  if (!res.ok) return null
+  try {
+    return JSON.parse(text) as { id: string }
+  } catch {
+    return null
+  }
+}
 
 // --- inlined from _shared/cors.ts ---
 export const corsHeaders = {
@@ -922,9 +1095,13 @@ Deno.serve(async (req) => {
   const concurrency = Math.min(CONCURRENCY, pageBudget)
 
   const authHeader = req.headers.get('Authorization') ?? ''
-  const callerClient = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: authHeader } } })
-  const { data: userData, error: userError } = await callerClient.auth.getUser()
-  if (userError || !userData.user) return jsonResponse({ error: 'Not authenticated' }, 401)
+  const user = await fetchUser(SUPABASE_URL, ANON_KEY, authHeader)
+  if (!user) return jsonResponse({ error: 'Not authenticated' }, 401)
+
+  // Reading the project as the caller, with their JWT, leaves the row-level
+  // policies to decide whether they may see it — the service-role key below is
+  // only used once that question has been answered.
+  const callerClient = restClient(SUPABASE_URL, { apikey: ANON_KEY, Authorization: authHeader })
 
   const { data: project, error: projectError } = await callerClient
     .from('projects')
@@ -933,7 +1110,7 @@ Deno.serve(async (req) => {
     .single()
   if (projectError || !project) return jsonResponse({ error: 'Project not found or access denied' }, 404)
 
-  const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
+  const db = restClient(SUPABASE_URL, { apikey: SERVICE_ROLE_KEY, Authorization: `Bearer ${SERVICE_ROLE_KEY}` })
 
   let { data: domainRow } = await db
     .from('domains')
@@ -1305,8 +1482,14 @@ Deno.serve(async (req) => {
 
     // Orphan status is only known once the whole run is in, so write it back.
     const orphans = finalResults.filter((r) => r.isOrphan).map((r) => r.url)
-    if (orphans.length > 0) {
-      await db.from('pages').update({ is_orphan: true }).eq('project_id', projectId).in('url', orphans)
+    // In batches: these go into the query string, and a run's worth of URLs
+    // would overrun what the gateway accepts in one.
+    for (let i = 0; i < orphans.length; i += 25) {
+      await db
+        .from('pages')
+        .update({ is_orphan: true })
+        .eq('project_id', projectId)
+        .in('url', orphans.slice(i, i + 25))
     }
 
     if (issues.length > 0) {
