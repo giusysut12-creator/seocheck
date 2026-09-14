@@ -14,7 +14,7 @@ function signal(overrides: Partial<KeywordSignal> & { keyword: string }): Keywor
 
 describe('classifyKeyword', () => {
   it('ignores keywords with too little data to conclude anything', () => {
-    expect(classifyKeyword(signal({ keyword: 'tiny', impressions: 40 }))).toEqual([])
+    expect(classifyKeyword(signal({ keyword: 'tiny', impressions: 12 }))).toEqual([])
     expect(classifyKeyword(signal({ keyword: 'unranked', position: null }))).toEqual([])
   })
 
@@ -40,6 +40,15 @@ describe('classifyKeyword', () => {
   it('flags positions 4-20 as within reach', () => {
     const found = classifyKeyword(signal({ keyword: 'reachable', position: 12, impressions: 5000, clicks: 40, ctr: 0.008 }))
     expect(found.find((o) => o.kind === 'striking_distance')).toBeDefined()
+  })
+
+  it('still surfaces a modest-demand keyword, ranked below a larger one', () => {
+    const ranked = rankOpportunities([
+      signal({ keyword: 'small', position: 12, impressions: 60, clicks: 1, ctr: 0.016 }),
+      signal({ keyword: 'large', position: 12, impressions: 6000, clicks: 40, ctr: 0.006 }),
+    ])
+    expect(ranked.map((o) => o.keyword)).toContain('small')
+    expect(ranked[0].keyword).toBe('large')
   })
 
   it('does not treat a top-3 keyword as within reach', () => {

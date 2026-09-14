@@ -16,8 +16,13 @@ import { impressionWeight, modelledCtr } from '@/lib/seo/opportunityEngine'
 
 export type OpportunityKind = 'ctr_gap' | 'striking_distance' | 'losing_ground' | 'cannibalization'
 
-/** Below this, a period's numbers are too small to draw conclusions from. */
-const MIN_IMPRESSIONS = 100
+/**
+ * Below this, a period's numbers are noise rather than a signal. Kept low on
+ * purpose: on a smaller site a query with a few dozen impressions is still
+ * worth knowing about, and the score already sinks low-demand keywords to the
+ * bottom of the list. A high cut-off here would hide them entirely instead.
+ */
+const MIN_IMPRESSIONS = 30
 
 /** A page-one result earning less than this share of its expected clicks. */
 const CTR_UNDERPERFORM_RATIO = 0.5

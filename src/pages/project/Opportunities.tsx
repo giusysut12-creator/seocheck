@@ -15,11 +15,14 @@ import {
 } from '@/lib/seo/opportunityTypes'
 import type { Page, SeoOpportunity } from '@/lib/database.types'
 import { GoogleConnectionCard } from '@/components/google/GoogleConnectionCard'
+import { RescanButton } from '@/components/google/RescanButton'
 import { EmptyState } from '@/components/EmptyState'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Button } from '@/components/ui/button'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn, formatNumber } from '@/lib/utils'
 
 const KIND_ORDER: OpportunityKind[] = ['ctr_gap', 'striking_distance', 'losing_ground', 'cannibalization']
@@ -39,6 +42,13 @@ export default function Opportunities() {
   const [technical, setTechnical] = React.useState<SeoOpportunity[]>([])
   const [pagesByUrl, setPagesByUrl] = React.useState<Map<string, Page>>(new Map())
   const [loading, setLoading] = React.useState(true)
+  const [reloadToken, setReloadToken] = React.useState(0)
+
+  const byKind = React.useMemo(() => {
+    const groups = new Map<OpportunityKind, ClassifiedOpportunity[]>(KIND_ORDER.map((k) => [k, []]))
+    for (const o of opportunities) groups.get(o.kind)!.push(o)
+    return groups
+  }, [opportunities])
 
   React.useEffect(() => {
     if (!id) return
@@ -108,13 +118,12 @@ export default function Opportunities() {
     return () => {
       cancelled = true
     }
-  }, [id, range])
+  }, [id, range, reloadToken])
 
   if (!project) return null
   if (loading) return <div className="py-16 text-center text-sm text-muted-foreground">Loading opportunities…</div>
 
   const connected = status?.connected && status?.property
-  const byKind = (kind: OpportunityKind) => opportunities.filter((o) => o.kind === kind)
   const totalPotential = opportunities.reduce((sum, o) => sum + o.potentialClicks, 0)
 
   return (
@@ -126,18 +135,25 @@ export default function Opportunities() {
             What to work on next for {project.domain}, ordered by the traffic at stake and how quickly it can be won.
           </p>
         </div>
-        <Select value={range} onValueChange={(v) => setRange(v as SyncRange)}>
-          <SelectTrigger className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {SYNC_RANGES.map((r) => (
-              <SelectItem key={r.value} value={r.value}>
-                {r.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-start gap-2">
+          <Select value={range} onValueChange={(v) => setRange(v as SyncRange)}>
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SYNC_RANGES.map((r) => (
+                <SelectItem key={r.value} value={r.value}>
+                  {r.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <RescanButton
+            projectId={project.id}
+            range={range}
+            onDone={() => setReloadToken((t) => t + 1)}
+          />
+        </div>
       </div>
 
       {!connected ? (
@@ -169,7 +185,7 @@ export default function Opportunities() {
               <TabsTrigger value="all">Priority ({opportunities.length})</TabsTrigger>
               {KIND_ORDER.map((kind) => (
                 <TabsTrigger key={kind} value={kind}>
-                  {KIND_LABELS[kind].label} ({byKind(kind).length})
+                  {KIND_LABELS[kind].label} ({byKind.get(kind)!.length})
                 </TabsTrigger>
               ))}
               <TabsTrigger value="technical">Technical ({technical.length})</TabsTrigger>
@@ -182,7 +198,7 @@ export default function Opportunities() {
             {KIND_ORDER.map((kind) => (
               <TabsContent key={kind} value={kind} className="space-y-3">
                 <p className="text-sm text-muted-foreground">{KIND_LABELS[kind].blurb}</p>
-                <OpportunityList items={byKind(kind)} projectId={project.id} pagesByUrl={pagesByUrl} />
+                <OpportunityList items={byKind.get(kind)!} projectId={project.id} pagesByUrl={pagesByUrl} />
               </TabsContent>
             ))}
 
@@ -224,6 +240,8 @@ export default function Opportunities() {
   )
 }
 
+const PAGE_SIZE = 25
+
 function OpportunityList({
   items,
   projectId,
@@ -235,6 +253,13 @@ function OpportunityList({
   pagesByUrl: Map<string, Page>
   showKind?: boolean
 }) {
+  const [page, setPage] = React.useState(0)
+
+  // Switching tab or period can leave the cursor past the end of a shorter list.
+  React.useEffect(() => {
+    setPage(0)
+  }, [items])
+
   if (items.length === 0) {
     return (
       <EmptyState
@@ -244,9 +269,12 @@ function OpportunityList({
     )
   }
 
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE))
+  const visible = items.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+
   return (
     <div className="space-y-3">
-      {items.map((o) => {
+      {visible.map((o) => {
         const page = o.page ? pagesByUrl.get(o.page) : undefined
         return (
           <Card key={`${o.kind}-${o.keyword}`}>
@@ -294,6 +322,27 @@ function OpportunityList({
           </Card>
         )
       })}
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-1 text-sm text-muted-foreground">
+          <span>
+            Showing {page * PAGE_SIZE + 1}-{Math.min((page + 1) * PAGE_SIZE, items.length)} of {items.length}
+          </span>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
+              <ChevronLeft className="size-4" /> Previous
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page + 1 >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next <ChevronRight className="size-4" />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
