@@ -25,6 +25,7 @@ export function RescanButton({
   syncSearchConsoleToo?: boolean
 }) {
   const [phase, setPhase] = React.useState<'idle' | 'crawling' | 'syncing'>('idle')
+  const [progress, setProgress] = React.useState<string | null>(null)
   const [result, setResult] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -33,18 +34,18 @@ export function RescanButton({
     setError(null)
 
     setPhase('crawling')
-    const { data: crawl, error: crawlError } = await startCrawl(projectId)
+    setProgress(null)
+    const { data: crawl, error: crawlError } = await startCrawl(projectId, (p) => {
+      setProgress(p.pending > 0 ? `${p.crawled} of ${p.total} pages` : `${p.crawled} pages`)
+    })
     if (crawlError) {
       setPhase('idle')
+      setProgress(null)
       setError(crawlError)
       return
     }
 
-    // A crawl that stopped at its time budget covered part of the site, which
-    // is worth saying plainly rather than presenting as a full audit.
-    const coverage = crawl?.truncated
-      ? `Crawled ${crawl.pages_crawled ?? 0} pages before reaching the time limit, with ${crawl.urls_pending ?? 0} still queued — run it again to continue.`
-      : `Crawled ${crawl?.pages_crawled ?? 0} pages.`
+    const coverage = `Crawled ${crawl?.pages_crawled ?? 0} pages.`
 
     let syncedNote = ''
     if (syncSearchConsoleToo) {
@@ -59,6 +60,7 @@ export function RescanButton({
     }
 
     setPhase('idle')
+    setProgress(null)
     setResult(`${coverage} On-page changes are reflected below.${syncedNote}`)
     onDone()
   }
@@ -69,7 +71,13 @@ export function RescanButton({
     <div className="flex flex-col items-end gap-1">
       <Button variant="outline" onClick={rescan} disabled={busy}>
         {busy ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-        {phase === 'crawling' ? 'Re-crawling…' : phase === 'syncing' ? 'Refreshing Search Console…' : 'Rescan'}
+        {phase === 'crawling'
+          ? progress
+            ? `Re-crawling ${progress}…`
+            : 'Re-crawling…'
+          : phase === 'syncing'
+            ? 'Refreshing Search Console…'
+            : 'Rescan'}
       </Button>
       {result && <p className="max-w-md text-right text-xs text-success">{result}</p>}
       {error && <p className="max-w-md text-right text-xs text-destructive">{error}</p>}

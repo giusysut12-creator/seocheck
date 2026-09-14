@@ -679,12 +679,16 @@ const CONCURRENCY = 8
 const DEFAULT_DELAY_MS = 100
 
 /**
- * Supabase terminates an Edge Function that outruns its wall-clock budget,
- * and a terminated run saves nothing at all. Stopping short of that leaves a
- * partial audit, which is worth far more than a failed one. Kept well under
- * the platform ceiling so the writes that follow the crawl still have room.
+ * URLs fetched per invocation. The platform kills a function that outruns its
+ * budget, and that ceiling differs by plan and counts CPU separately from
+ * wall clock — so rather than guessing it, each call does a slice small
+ * enough to finish comfortably and reports whether more remains. The client
+ * calls back until the crawl is done.
  */
-const MAX_RUNTIME_MS = 100_000
+const CHUNK_SIZE = 20
+
+/** A run older than this is stale; a new request starts a fresh audit. */
+const RESUME_WINDOW_MS = 30 * 60 * 1000
 const USER_AGENT = 'RankPilotBot/1.0 (+https://rankpilot.app/bot)'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -833,12 +837,33 @@ Deno.serve(async (req) => {
     domainRow = created
   }
 
-  const { data: audit, error: auditInsertError } = await db
+  // Continue the run already in flight, so a multi-call crawl accumulates
+  // into one audit instead of starting over on every request.
+  const { data: inFlight } = await db
     .from('site_audits')
-    .insert({ project_id: projectId, domain_id: domainRow?.id ?? null, status: 'crawling', started_at: new Date().toISOString() })
     .select('*')
-    .single()
-  if (auditInsertError || !audit) return jsonResponse({ error: 'Could not start audit' }, 500)
+    .eq('project_id', projectId)
+    .eq('status', 'crawling')
+    .gte('started_at', new Date(Date.now() - RESUME_WINDOW_MS).toISOString())
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  let audit = inFlight
+  if (!audit) {
+    const { data: created, error: auditInsertError } = await db
+      .from('site_audits')
+      .insert({
+        project_id: projectId,
+        domain_id: domainRow?.id ?? null,
+        status: 'crawling',
+        started_at: new Date().toISOString(),
+      })
+      .select('*')
+      .single()
+    if (auditInsertError || !created) return jsonResponse({ error: 'Could not start audit' }, 500)
+    audit = created
+  }
 
   try {
     const homepage = await resolveHomepage(project.domain)
@@ -863,33 +888,35 @@ Deno.serve(async (req) => {
       }
     }
 
-    const visited = new Set<string>()
-    const linkedFrom = new Set<string>()
+    // Everything known about across the whole run: what earlier slices
+    // discovered, plus whatever the sitemap lists now.
+    const discovered = new Map<string, string>()
+    for (const u of (audit.discovered_urls ?? []) as string[]) discovered.set(normalize(u), u)
+    for (const u of queue) discovered.set(normalize(u), u)
+
+    const linkedFrom = new Set<string>((audit.linked_urls ?? []) as string[])
+
+    // Already crawled during this run — the pages table is the record, so a
+    // slice never re-fetches what a previous one already handled.
+    const { data: crawledRows } = await db
+      .from('pages')
+      .select('url')
+      .eq('project_id', projectId)
+      .gte('last_crawled_at', audit.started_at)
+    const visited = new Set<string>(((crawledRows ?? []) as { url: string }[]).map((r) => normalize(r.url)))
+
     const results: CrawledPageResult[] = []
-    const toVisit: string[] = []
-    const seenQueue = new Set<string>()
-    for (const u of queue) {
-      const norm = normalize(u)
-      if (!seenQueue.has(norm)) {
-        seenQueue.add(norm)
-        toVisit.push(u)
-      }
-    }
+    const toVisit = Array.from(discovered.values()).filter((u) => !visited.has(normalize(u)))
 
     let cursor = 0
     let urlsErrored = 0
+    let crawledThisRun = 0
 
-    const crawlDeadline = Date.now() + MAX_RUNTIME_MS
-    let truncated = false
-
-    while (cursor < toVisit.length && visited.size < MAX_URLS) {
-      if (Date.now() > crawlDeadline) {
-        truncated = true
-        break
-      }
+    while (cursor < toVisit.length && visited.size < MAX_URLS && crawledThisRun < CHUNK_SIZE) {
       const batch = toVisit.slice(cursor, cursor + CONCURRENCY).filter((u) => !visited.has(normalize(u)))
       cursor += CONCURRENCY
       if (batch.length === 0) continue
+      crawledThisRun += batch.length
 
       const batchResults = await Promise.all(
         batch.map(async (url) => {
@@ -927,9 +954,8 @@ Deno.serve(async (req) => {
             const target = safeUrl(new URL(fetched.redirectUrl, url).toString())
             if (target && target.hostname.replace(/^www\./, '') === base.hostname.replace(/^www\./, '')) {
               const targetNorm = normalize(target.toString())
-              if (!seenQueue.has(targetNorm) && toVisit.length < MAX_URLS * 2) {
-                seenQueue.add(targetNorm)
-                toVisit.push(target.toString())
+              if (!discovered.has(targetNorm) && discovered.size < MAX_URLS * 2) {
+                discovered.set(targetNorm, target.toString())
               }
             }
             return {
@@ -956,11 +982,10 @@ Deno.serve(async (req) => {
           if (fetched.html) {
             const parsed = parseHtml(fetched.html, url)
             for (const link of parsed.internalLinks) {
-              linkedFrom.add(normalize(link))
               const linkNorm = normalize(link)
-              if (!seenQueue.has(linkNorm) && toVisit.length < MAX_URLS * 2) {
-                seenQueue.add(linkNorm)
-                toVisit.push(link)
+              linkedFrom.add(linkNorm)
+              if (!discovered.has(linkNorm) && discovered.size < MAX_URLS * 2) {
+                discovered.set(linkNorm, link)
               }
             }
             return {
@@ -1008,29 +1033,9 @@ Deno.serve(async (req) => {
 
       for (const r of batchResults) if (r) results.push(r)
 
-      await db
-        .from('site_audits')
-        .update({ urls_crawled: visited.size, urls_total: Math.min(toVisit.length, MAX_URLS), urls_errored: urlsErrored })
-        .eq('id', audit.id)
-
       if (robots.crawlDelaySeconds) await sleep(robots.crawlDelaySeconds * 1000)
       else await sleep(DEFAULT_DELAY_MS)
     }
-
-    // Orphan detection: pages seeded from the sitemap that no crawled page
-    // links to. Only meaningful over a complete crawl — after an early stop,
-    // a page whose only inbound link lives on a page we never reached would
-    // be reported as orphaned when it is not.
-    if (!truncated) {
-      const homepageNorm = normalize(base.toString())
-      for (const r of results) {
-        if (normalize(r.url) === homepageNorm) continue
-        r.isOrphan = !linkedFrom.has(normalize(r.url))
-      }
-    }
-
-    const issues = buildAuditIssues(results)
-    const score = computeScore(issues, results.length)
 
     const pageRows = results.map((r) => ({
       project_id: projectId,
@@ -1060,6 +1065,96 @@ Deno.serve(async (req) => {
       await db.from('pages').upsert(pageRows, { onConflict: 'project_id,url' })
     }
 
+    for (const r of results) visited.add(normalize(r.url))
+
+    const remaining = Array.from(discovered.keys()).filter((u) => !visited.has(u)).length
+    const moreToCrawl = remaining > 0 && visited.size < MAX_URLS
+    const totalPlanned = Math.min(discovered.size, MAX_URLS)
+
+    // Carry the run's frontier and link graph forward, so the next call
+    // resumes instead of rediscovering.
+    await db
+      .from('site_audits')
+      .update({
+        urls_crawled: visited.size,
+        urls_total: totalPlanned,
+        urls_errored: urlsErrored,
+        discovered_urls: Array.from(discovered.values()),
+        linked_urls: Array.from(linkedFrom),
+      })
+      .eq('id', audit.id)
+
+    if (moreToCrawl) {
+      return jsonResponse({
+        site_audit_id: audit.id,
+        status: 'crawling',
+        pages_crawled: visited.size,
+        urls_pending: remaining,
+        urls_total: totalPlanned,
+      })
+    }
+
+    // ---- Finalization -----------------------------------------------------
+    // The audit covers the whole run, not just this slice, so the findings are
+    // computed from every page stored for it rather than from what this call
+    // happened to fetch.
+    const { data: allPages } = await db
+      .from('pages')
+      .select('*')
+      .eq('project_id', projectId)
+      .gte('last_crawled_at', audit.started_at)
+
+    const homepageNorm = normalize(base.toString())
+    const finalResults: CrawledPageResult[] = ((allPages ?? []) as Record<string, never>[]).map((row) => {
+      const p = row as unknown as {
+        url: string
+        title: string | null
+        meta_description: string | null
+        h1: string | null
+        h1_count: number
+        h2_count: number
+        canonical: string | null
+        robots_meta: string | null
+        status_code: number | null
+        redirect_url: string | null
+        is_https: boolean
+        word_count: number | null
+        internal_links_count: number
+        external_links_count: number
+        images_missing_alt_count: number
+        load_time_ms: number | null
+      }
+      return {
+        url: p.url,
+        statusCode: p.status_code,
+        redirectUrl: p.redirect_url,
+        title: p.title,
+        metaDescription: p.meta_description,
+        // Only the count survives storage; the rules care how many there are.
+        h1: Array.from({ length: p.h1_count }, (_, i) => (i === 0 ? (p.h1 ?? '') : '')),
+        h2Count: p.h2_count,
+        canonical: p.canonical,
+        robotsMeta: p.robots_meta,
+        isHttps: p.is_https,
+        wordCount: p.word_count ?? 0,
+        internalLinksCount: p.internal_links_count,
+        externalLinksCount: p.external_links_count,
+        imagesMissingAlt: p.images_missing_alt_count,
+        loadTimeMs: p.load_time_ms,
+        isOrphan: normalize(p.url) !== homepageNorm && !linkedFrom.has(normalize(p.url)),
+        error: null,
+      }
+    })
+
+    const issues = buildAuditIssues(finalResults)
+    const score = computeScore(issues, finalResults.length)
+
+    // Orphan status is only known once the whole run is in, so write it back.
+    const orphans = finalResults.filter((r) => r.isOrphan).map((r) => r.url)
+    if (orphans.length > 0) {
+      await db.from('pages').update({ is_orphan: true }).eq('project_id', projectId).in('url', orphans)
+    }
+
     if (issues.length > 0) {
       await db.from('audit_issues').insert(
         issues.map((issue) => ({
@@ -1075,8 +1170,8 @@ Deno.serve(async (req) => {
       .from('site_audits')
       .update({
         status: 'completed',
-        urls_total: truncated ? Math.min(seenQueue.size, MAX_URLS) : results.length,
-        urls_crawled: results.length,
+        urls_total: finalResults.length,
+        urls_crawled: finalResults.length,
         urls_errored: urlsErrored,
         finished_at: new Date().toISOString(),
         ...score,
@@ -1090,7 +1185,7 @@ Deno.serve(async (req) => {
       .delete()
       .eq('project_id', projectId)
       .in('category', ['technical', 'internal_linking', 'content'])
-    const opportunities = buildCrawlerOpportunities(results)
+    const opportunities = buildCrawlerOpportunities(finalResults)
     if (opportunities.length > 0) {
       await db.from('seo_opportunities').insert(
         opportunities.map((o) => ({
@@ -1120,9 +1215,8 @@ Deno.serve(async (req) => {
     return jsonResponse({
       site_audit_id: audit.id,
       status: 'completed',
-      pages_crawled: results.length,
-      truncated,
-      urls_pending: truncated ? Math.max(0, Math.min(seenQueue.size, MAX_URLS) - results.length) : 0,
+      pages_crawled: finalResults.length,
+      urls_pending: 0,
       ...score,
     })
   } catch (err) {

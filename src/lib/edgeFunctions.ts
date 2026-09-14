@@ -3,14 +3,28 @@ import { supabase } from '@/lib/supabase'
 
 export interface CrawlSiteResponse {
   site_audit_id: string
-  status: 'completed' | 'failed'
+  /** 'crawling' means a slice finished and more URLs are queued. */
+  status: 'crawling' | 'completed' | 'failed'
   pages_crawled?: number
   seo_score?: number
-  /** The crawl stopped at its time budget with URLs still queued. */
-  truncated?: boolean
   urls_pending?: number
+  urls_total?: number
   error?: string
 }
+
+export interface CrawlProgress {
+  crawled: number
+  pending: number
+  total: number
+}
+
+/**
+ * A crawl runs in slices: the Edge Function fetches a bounded number of URLs
+ * and returns, because the platform kills a request that runs too long and a
+ * killed request saves nothing. Driving the loop here keeps every caller —
+ * and the audit itself — unaware of the chunking.
+ */
+const MAX_SLICES = 40
 
 const NOT_DEPLOYED =
   'Could not reach the Site Audit crawler. Deploy the "crawl-site" Edge Function to your Supabase project — Settings shows its current status.'
@@ -34,13 +48,34 @@ async function describeInvokeError(error: unknown): Promise<string> {
   return NOT_DEPLOYED
 }
 
-export async function startCrawl(projectId: string): Promise<{ data: CrawlSiteResponse | null; error: string | null }> {
-  const { data, error } = await supabase.functions.invoke<CrawlSiteResponse>('crawl-site', {
-    body: { project_id: projectId },
-  })
-  if (error) return { data: null, error: await describeInvokeError(error) }
-  if (data?.error) return { data, error: data.error }
-  return { data: data ?? null, error: null }
+export async function startCrawl(
+  projectId: string,
+  onProgress?: (progress: CrawlProgress) => void,
+): Promise<{ data: CrawlSiteResponse | null; error: string | null }> {
+  let last: CrawlSiteResponse | null = null
+
+  for (let slice = 0; slice < MAX_SLICES; slice++) {
+    const { data, error } = await supabase.functions.invoke<CrawlSiteResponse>('crawl-site', {
+      body: { project_id: projectId },
+    })
+    if (error) return { data: last, error: await describeInvokeError(error) }
+    if (data?.error) return { data, error: data.error }
+
+    last = data ?? null
+    if (!last) return { data: null, error: 'The crawler returned an empty response.' }
+
+    onProgress?.({
+      crawled: last.pages_crawled ?? 0,
+      pending: last.urls_pending ?? 0,
+      total: last.urls_total ?? last.pages_crawled ?? 0,
+    })
+
+    if (last.status !== 'crawling') return { data: last, error: null }
+  }
+
+  // The guard exists so a frontier that somehow keeps growing cannot spin
+  // forever; the pages gathered so far are already saved.
+  return { data: last, error: null }
 }
 
 export interface AiAssistantResponse {
