@@ -690,31 +690,41 @@ interface FetchResult {
   contentType: string | null
   loadTimeMs: number | null
   error: string | null
+  /** Where the request ended up, which differs from the input when followed. */
+  finalUrl: string | null
 }
 
-async function timedFetch(url: string): Promise<FetchResult> {
+async function timedFetch(url: string, options: { follow?: boolean } = {}): Promise<FetchResult> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
   const start = performance.now()
   try {
     const res = await fetch(url, {
-      redirect: 'manual',
+      redirect: options.follow ? 'follow' : 'manual',
       signal: controller.signal,
       headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,application/xhtml+xml' },
     })
     const loadTimeMs = Math.round(performance.now() - start)
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get('location')
-      return { statusCode: res.status, redirectUrl: location, html: null, contentType: null, loadTimeMs, error: null }
+      return {
+        statusCode: res.status,
+        redirectUrl: location,
+        html: null,
+        contentType: null,
+        loadTimeMs,
+        error: null,
+        finalUrl: res.url || url,
+      }
     }
     const contentType = res.headers.get('content-type')
     const isHtml = !contentType || contentType.includes('text/html') || contentType.includes('application/xhtml')
     const html = isHtml ? await res.text() : null
-    return { statusCode: res.status, redirectUrl: null, html, contentType, loadTimeMs, error: null }
+    return { statusCode: res.status, redirectUrl: null, html, contentType, loadTimeMs, error: null, finalUrl: res.url || url }
   } catch (err) {
     const loadTimeMs = Math.round(performance.now() - start)
     const message = err instanceof Error ? (err.name === 'AbortError' ? 'Request timed out' : err.message) : 'Fetch failed'
-    return { statusCode: null, redirectUrl: null, html: null, contentType: null, loadTimeMs, error: message }
+    return { statusCode: null, redirectUrl: null, html: null, contentType: null, loadTimeMs, error: message, finalUrl: null }
   } finally {
     clearTimeout(timeout)
   }
@@ -723,9 +733,9 @@ async function timedFetch(url: string): Promise<FetchResult> {
 async function resolveHomepage(domain: string): Promise<{ base: URL; result: FetchResult } | null> {
   for (const scheme of ['https', 'http']) {
     const url = `${scheme}://${domain}/`
-    const result = await timedFetch(url)
+    const result = await timedFetch(url, { follow: true })
     if (result.statusCode !== null || result.error === null) {
-      const base = safeUrl(url)
+      const base = safeUrl(result.finalUrl ?? url) ?? safeUrl(url)
       if (base) return { base, result }
     }
   }
@@ -733,7 +743,7 @@ async function resolveHomepage(domain: string): Promise<{ base: URL; result: Fet
 }
 
 async function fetchRobots(base: URL): Promise<RobotsRules> {
-  const result = await timedFetch(new URL('/robots.txt', base).toString())
+  const result = await timedFetch(new URL('/robots.txt', base).toString(), { follow: true })
   if (result.statusCode === 200 && result.html) {
     return parseRobotsTxt(result.html, USER_AGENT)
   }
@@ -744,7 +754,7 @@ async function fetchSitemapUrls(base: URL, robots: RobotsRules): Promise<string[
   const candidates = robots.sitemaps.length > 0 ? robots.sitemaps : [new URL('/sitemap.xml', base).toString()]
   const found: string[] = []
   for (const sitemapUrl of candidates.slice(0, 3)) {
-    const result = await timedFetch(sitemapUrl)
+    const result = await timedFetch(sitemapUrl, { follow: true })
     if (result.statusCode === 200 && result.html) {
       const locs = extractSitemapLocs(result.html)
       // Sitemap index: recurse one level into child sitemaps.
@@ -752,7 +762,7 @@ async function fetchSitemapUrls(base: URL, robots: RobotsRules): Promise<string[
       const urlLocs = locs.filter((l) => !l.endsWith('.xml'))
       found.push(...urlLocs)
       for (const child of childSitemaps.slice(0, 3)) {
-        const childResult = await timedFetch(child)
+        const childResult = await timedFetch(child, { follow: true })
         if (childResult.statusCode === 200 && childResult.html) {
           found.push(...extractSitemapLocs(childResult.html))
         }
