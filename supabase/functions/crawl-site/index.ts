@@ -681,7 +681,7 @@ export { CATEGORY_KEYS }
 
 const MAX_URLS = 100
 const FETCH_TIMEOUT_MS = 8_000
-const CONCURRENCY = 8
+const CONCURRENCY = 4
 const DEFAULT_DELAY_MS = 100
 
 /**
@@ -691,7 +691,7 @@ const DEFAULT_DELAY_MS = 100
  * enough to finish comfortably and reports whether more remains. The client
  * calls back until the crawl is done.
  */
-const CHUNK_SIZE = 10
+const CHUNK_SIZE = 8
 
 /** A run older than this is stale; a new request starts a fresh audit. */
 const RESUME_WINDOW_MS = 30 * 60 * 1000
@@ -877,7 +877,26 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+/**
+ * Resident memory, in MB.
+ *
+ * A stopped worker says nothing about why it was stopped: Supabase answers
+ * 546 whether the function ran out of memory or out of time. Reporting what
+ * each slice used — and what it inherited from the slices before it on the
+ * same worker — lets that be read off the failure instead of guessed at.
+ */
+function memoryMb(): number | null {
+  try {
+    return Math.round(Deno.memoryUsage().rss / 1_048_576)
+  } catch {
+    return null
+  }
+}
+
 Deno.serve(async (req) => {
+  const sliceStartedAt = Date.now()
+  const rssStartMb = memoryMb()
+
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
 
@@ -1115,11 +1134,15 @@ Deno.serve(async (req) => {
             const parsed = parseHtml(fetched.html, url)
             for (const link of parsed.internalLinks) {
               const linkNorm = normalize(link)
-              linkedFrom.add(linkNorm)
               if (NON_PAGE_EXTENSION.test(linkNorm)) continue
               if (!discovered.has(linkNorm) && discovered.size < MAX_URLS * 2) {
                 discovered.set(linkNorm, link)
               }
+              // Only pages the run knows about can ever be asked "is this an
+              // orphan?", so recording anything else would grow this set with
+              // every page crawled — and it is written to the database after
+              // every batch and read back at the start of every slice.
+              if (discovered.has(linkNorm)) linkedFrom.add(linkNorm)
             }
             return {
               url,
@@ -1208,6 +1231,12 @@ Deno.serve(async (req) => {
         urls_pending: remaining,
         urls_total: totalPlanned,
         crawl_delay_seconds: robots.crawlDelaySeconds ?? 0,
+        diagnostics: {
+          rss_start_mb: rssStartMb,
+          rss_end_mb: memoryMb(),
+          wall_ms: Date.now() - sliceStartedAt,
+          pages_this_slice: crawledThisRun,
+        },
       })
     }
 
