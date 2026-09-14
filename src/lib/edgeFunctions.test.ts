@@ -99,6 +99,30 @@ describe('startCrawl', () => {
     expect(error).toContain('Rescan again')
   })
 
+  it('asks for less work after each stop, down to one page at a time', async () => {
+    // Nobody here knows how much a call may do before the platform stops it,
+    // so the crawl has to find out by asking for less until it gets through.
+    invoke
+      .mockResolvedValueOnce(workerStopped())
+      .mockResolvedValueOnce(workerStopped())
+      .mockResolvedValueOnce(workerStopped())
+      .mockResolvedValueOnce(slice(1, 0))
+
+    await run()
+
+    const asked = invoke.mock.calls.map((c) => (c[1] as { body: { max_pages: number } }).body.max_pages)
+    expect(asked).toEqual([8, 4, 2, 1])
+  })
+
+  it('says so when even one page at a time is stopped', async () => {
+    invoke.mockResolvedValueOnce(slice(17, 83)).mockResolvedValue(workerStopped())
+    auditProgress.mockResolvedValue({ data: { urls_crawled: 17, urls_total: 100 } })
+
+    const { error } = await run()
+
+    expect(error).toContain('single page at a time')
+  })
+
   it('reports a missing deployment rather than a crawl failure', async () => {
     invoke.mockResolvedValue({ data: null, error: new FunctionsHttpError({ status: 404 }) })
 

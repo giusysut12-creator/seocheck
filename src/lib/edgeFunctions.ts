@@ -17,6 +17,7 @@ export interface CrawlSiteResponse {
     rss_end_mb: number | null
     wall_ms: number
     pages_this_slice: number
+    page_budget?: number
   }
   error?: string
 }
@@ -44,6 +45,20 @@ const MAX_SLICES = 60
  * saved. Only a run of them that moves the crawl no further is a real failure.
  */
 const MAX_WORKER_STOPS = 4
+
+/**
+ * Pages to attempt per call, and the floor it can fall to.
+ *
+ * How much work a call may do before Supabase stops the worker depends on the
+ * project's plan and on how slowly the site answers — neither of which can be
+ * known from here. So the crawl asks for less after every stop and a little
+ * more after every success, and settles where the platform lets it run.
+ */
+const PAGES_PER_SLICE = 8
+const MIN_PAGES_PER_SLICE = 1
+
+/** A moment between calls, so a retiring worker is not handed the next one. */
+const BETWEEN_SLICES_MS = 400
 
 /**
  * Reads how far the run has actually got.
@@ -78,7 +93,11 @@ function isWorkerStopped(error: unknown): boolean {
  * on: a missing deployment reads very differently from an error the function
  * itself returned, and the raw SDK message distinguishes neither.
  */
-async function describeInvokeError(error: unknown, progress: CrawlSiteResponse | null): Promise<string> {
+async function describeInvokeError(
+  error: unknown,
+  progress: CrawlSiteResponse | null,
+  pagesPerSlice = PAGES_PER_SLICE,
+): Promise<string> {
   if (error instanceof FunctionsHttpError) {
     const status = error.context?.status
     if (status === 404) return NOT_DEPLOYED
@@ -91,11 +110,18 @@ async function describeInvokeError(error: unknown, progress: CrawlSiteResponse |
       const cost = d
         ? ` (last slice: ${d.pages_this_slice} pages in ${(d.wall_ms / 1000).toFixed(1)}s, memory ${d.rss_start_mb ?? '?'}→${d.rss_end_mb ?? '?'} MB)`
         : ''
+      // Down to one page per call and still stopped means the cost is in what
+      // every call does before it fetches anything, not in the crawling — a
+      // different problem, and worth saying so rather than suggesting patience.
+      const floor =
+        pagesPerSlice <= MIN_PAGES_PER_SLICE
+          ? ' It was stopped even asking for a single page at a time, so the limit is being reached before any crawling happens.'
+          : ''
       // Saying what survived matters: the crawl is resumable, so this is a
       // pause to pick back up rather than work to redo.
       return saved > 0
-        ? `Supabase stopped the crawler after ${saved} pages. Those pages are saved — press Rescan again to carry on from there.${cost}`
-        : `Supabase stopped the crawler before it could fetch anything. Press Rescan again; if it keeps happening, the site may be too slow to answer.${cost}`
+        ? `Supabase stopped the crawler after ${saved} pages. Those pages are saved — press Rescan again to carry on from there.${floor}${cost}`
+        : `Supabase stopped the crawler before it could fetch anything.${floor} Press Rescan again; if it keeps happening, the site may be too slow to answer.${cost}`
     }
     const body = await error.context?.json?.().catch(() => null)
     if (body?.error) return body.error as string
@@ -115,6 +141,7 @@ export async function startCrawl(
   let last: CrawlSiteResponse | null = null
   let workerStops = 0
   let crawledSoFar = 0
+  let pagesPerSlice = PAGES_PER_SLICE
 
   const report = () => {
     if (!last) return
@@ -128,11 +155,16 @@ export async function startCrawl(
 
   for (let slice = 0; slice < MAX_SLICES; slice++) {
     const { data, error } = await supabase.functions.invoke<CrawlSiteResponse>('crawl-site', {
-      body: { project_id: projectId },
+      body: { project_id: projectId, max_pages: pagesPerSlice },
     })
 
     if (error) {
       if (isWorkerStopped(error)) {
+        // Ask for less next time. Halving converges in a few steps, and one
+        // page per call is the floor — if even that is stopped, the cost is
+        // not in the crawling and no slice size will help.
+        pagesPerSlice = Math.max(MIN_PAGES_PER_SLICE, Math.floor(pagesPerSlice / 2))
+
         // The response is gone, but the pages the slice committed are not.
         const saved = await readCrawlProgress(projectId)
         if (saved && saved.crawled > crawledSoFar) {
@@ -159,7 +191,7 @@ export async function startCrawl(
           continue
         }
       }
-      return { data: last, error: await describeInvokeError(error, last) }
+      return { data: last, error: await describeInvokeError(error, last, pagesPerSlice) }
     }
     if (data?.error) return { data, error: data.error }
 
@@ -169,14 +201,20 @@ export async function startCrawl(
     // A slice that came back is proof the run is moving again.
     workerStops = 0
     crawledSoFar = Math.max(crawledSoFar, last.pages_crawled ?? 0)
+    // Creep back up, so one bad slice does not leave the crawl crawling.
+    pagesPerSlice = Math.min(PAGES_PER_SLICE, pagesPerSlice + 1)
     report()
 
     if (last.status !== 'crawling') return { data: last, error: null }
+    await wait(BETWEEN_SLICES_MS)
   }
 
-  // The guard exists so a frontier that somehow keeps growing cannot spin
-  // forever; the pages gathered so far are already saved.
-  return { data: last, error: null }
+  // A frontier that keeps growing must not spin forever. What was fetched is
+  // saved, so this is somewhere to pick up from rather than a failure.
+  return {
+    data: last,
+    error: `Paused after ${last?.pages_crawled ?? 0} pages so the run doesn't go on indefinitely — press Rescan to carry on.`,
+  }
 }
 
 export interface AiAssistantResponse {

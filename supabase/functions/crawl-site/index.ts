@@ -900,7 +900,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
 
-  let body: { action?: string; project_id?: string }
+  let body: { action?: string; project_id?: string; max_pages?: number }
   try {
     body = await req.json()
   } catch {
@@ -913,6 +913,13 @@ Deno.serve(async (req) => {
 
   const projectId = body.project_id
   if (!projectId) return jsonResponse({ error: 'project_id is required' }, 400)
+
+  // How much to attempt this call. The caller lowers it after Supabase stops a
+  // worker, so the crawl settles on whatever this project's plan actually
+  // allows instead of on a number guessed here.
+  const requested = Number(body.max_pages)
+  const pageBudget = Number.isFinite(requested) ? Math.max(1, Math.min(CHUNK_SIZE, Math.floor(requested))) : CHUNK_SIZE
+  const concurrency = Math.min(CONCURRENCY, pageBudget)
 
   const authHeader = req.headers.get('Authorization') ?? ''
   const callerClient = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: authHeader } } })
@@ -1062,10 +1069,10 @@ Deno.serve(async (req) => {
     const sliceDeadline = Date.now() + SLICE_BUDGET_MS
     const crawlDelayMs = (robots.crawlDelaySeconds ?? 0) * 1000
 
-    while (cursor < toVisit.length && visited.size < MAX_URLS && crawledThisRun < CHUNK_SIZE) {
+    while (cursor < toVisit.length && visited.size < MAX_URLS && crawledThisRun < pageBudget) {
       if (Date.now() > sliceDeadline) break
-      const batch = toVisit.slice(cursor, cursor + CONCURRENCY).filter((u) => !visited.has(normalize(u)))
-      cursor += CONCURRENCY
+      const batch = toVisit.slice(cursor, cursor + concurrency).filter((u) => !visited.has(normalize(u)))
+      cursor += concurrency
       if (batch.length === 0) continue
       crawledThisRun += batch.length
 
@@ -1236,6 +1243,7 @@ Deno.serve(async (req) => {
           rss_end_mb: memoryMb(),
           wall_ms: Date.now() - sliceStartedAt,
           pages_this_slice: crawledThisRun,
+          page_budget: pageBudget,
         },
       })
     }
