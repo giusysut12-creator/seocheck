@@ -48,7 +48,7 @@ export function OrganicPerformance({ projectId }: { projectId: string }) {
         setPrevious(prev)
         setDaily(series)
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load organic performance')
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Non è stato possibile caricare le performance organiche')
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -60,7 +60,7 @@ export function OrganicPerformance({ projectId }: { projectId: string }) {
   }, [projectId, range])
 
   if (loading) {
-    return <Card><CardContent className="p-5 text-sm text-muted-foreground">Loading organic performance…</CardContent></Card>
+    return <Card><CardContent className="p-5 text-sm text-muted-foreground">Caricamento performance organiche…</CardContent></Card>
   }
   if (error) {
     return (
@@ -84,20 +84,20 @@ export function OrganicPerformance({ projectId }: { projectId: string }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-foreground">Organic Performance</h2>
+          <h2 className="text-sm font-semibold text-foreground">Performance organiche</h2>
           <p className="text-xs text-muted-foreground">
             {hasComparison
-              ? `Measured by Google Search Console · compared with the previous ${current.days} days`
+              ? `Misurate da Google Search Console · confrontate con i ${current.days} giorni precedenti`
               : // A comparison needs the preceding window synchronized too, which
                 // a short first sync will not have covered.
-                `Measured by Google Search Console · sync a longer period to compare with the previous ${current.days} days`}
+                `Misurate da Google Search Console · sincronizza un periodo più lungo per confrontare con i ${current.days} giorni precedenti`}
           </p>
         </div>
         <Tabs value={range} onValueChange={(v) => setRange(v as SyncRange)}>
           <TabsList>
             {SYNC_RANGES.map((r) => (
               <TabsTrigger key={r.value} value={r.value}>
-                {r.label.replace('Last ', '')}
+                {r.label.replace('Ultimi ', '')}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -106,30 +106,30 @@ export function OrganicPerformance({ projectId }: { projectId: string }) {
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <MetricTile
-          label="Organic Clicks"
+          label="Clic organici"
           value={formatNumber(current.clicks)}
           delta={change(current.clicks, previous?.clicks ?? null)}
-          tooltip="Times someone clicked through to your site from Google search results."
+          tooltip="Numero di volte in cui qualcuno ha cliccato sul tuo sito dai risultati di ricerca Google."
         />
         <MetricTile
-          label="Organic Impressions"
+          label="Impressioni organiche"
           value={formatNumber(current.impressions)}
           delta={change(current.impressions, previous?.impressions ?? null)}
-          tooltip="Times a page of your site appeared in search results."
+          tooltip="Numero di volte in cui una pagina del tuo sito è apparsa nei risultati di ricerca."
         />
         <MetricTile
-          label="Average CTR"
+          label="CTR medio"
           value={`${(current.ctr * 100).toFixed(2)}%`}
           delta={change(current.ctr, previous?.ctr ?? null)}
-          tooltip="Clicks divided by impressions across the selected period."
+          tooltip="Clic diviso per impressioni nel periodo selezionato."
         />
         <MetricTile
-          label="Average Position"
+          label="Posizione media"
           value={current.position !== null ? current.position.toFixed(1) : '—'}
           delta={positionDelta}
           deltaUnit="pos"
           lowerIsBetter
-          tooltip="Impression-weighted average position over the period — not a live ranking for any single keyword."
+          tooltip="Posizione media ponderata per le impressioni nel periodo — non è il posizionamento in tempo reale di una singola parola chiave."
         />
       </div>
 
@@ -151,7 +151,7 @@ export function OrganicPerformance({ projectId }: { projectId: string }) {
                 <Area
                   type="monotone"
                   dataKey="clicks"
-                  name="Clicks"
+                  name="Clic"
                   stroke="var(--color-accent)"
                   fill="url(#gscClicks)"
                   strokeWidth={2}
@@ -195,7 +195,7 @@ function MetricTile({
         <div className="text-2xl font-semibold text-foreground">{value}</div>
         {delta === null ? (
           <p className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Minus className="size-3" /> no comparison data
+            <Minus className="size-3" /> nessun dato di confronto
           </p>
         ) : (
           <p className={cn('flex items-center gap-1 text-xs font-medium', improved ? 'text-success' : 'text-destructive')}>
@@ -204,7 +204,7 @@ function MetricTile({
               ? `${Math.abs(delta).toFixed(1)} ${deltaUnit}`
               : `${delta > 0 ? '+' : ''}${delta.toFixed(1)}%`}
             <span className="font-normal text-muted-foreground">
-              {lowerIsBetter && improved ? 'better than' : 'vs'} previous period
+              {lowerIsBetter && improved ? 'meglio del' : 'rispetto al'} periodo precedente
             </span>
           </p>
         )}

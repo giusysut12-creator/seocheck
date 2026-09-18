@@ -21,26 +21,26 @@ export interface GoogleStatus {
 export type SyncRange = '7d' | '28d' | '3m' | '6m' | '12m'
 
 export const SYNC_RANGES: { value: SyncRange; label: string }[] = [
-  { value: '7d', label: 'Last 7 days' },
-  { value: '28d', label: 'Last 28 days' },
-  { value: '3m', label: 'Last 3 months' },
-  { value: '6m', label: 'Last 6 months' },
-  { value: '12m', label: 'Last 12 months' },
+  { value: '7d', label: 'Ultimi 7 giorni' },
+  { value: '28d', label: 'Ultimi 28 giorni' },
+  { value: '3m', label: 'Ultimi 3 mesi' },
+  { value: '6m', label: 'Ultimi 6 mesi' },
+  { value: '12m', label: 'Ultimi 12 mesi' },
 ]
 
 /** User-facing text for the failure reasons the Edge Function reports. */
 const REASON_MESSAGES: Record<string, string> = {
-  not_configured: 'Google integration is not set up on the server yet.',
-  not_connected: 'Connect your Google account first.',
-  token_expired: 'Your Google connection expired. Please connect again.',
-  token_refresh_failed: 'Could not refresh your Google access. Try reconnecting.',
-  no_property: 'Select a Search Console property for this project first.',
-  no_property_access: "You don't have access to this Search Console property.",
-  properties_unavailable: 'Could not read your Search Console properties.',
-  quota_exceeded: 'Google API quota exceeded. Please try again later.',
-  search_analytics_failed: 'Search Console refused the data request.',
-  storage_failed: 'The data was fetched but could not be saved.',
-  unexpected: 'Something went wrong talking to Google.',
+  not_configured: "L'integrazione Google non è ancora configurata sul server.",
+  not_connected: 'Connetti prima il tuo account Google.',
+  token_expired: 'La connessione Google è scaduta. Connettiti di nuovo.',
+  token_refresh_failed: "Non è stato possibile rinnovare l'accesso Google. Prova a riconnetterti.",
+  no_property: 'Seleziona prima una proprietà Search Console per questo progetto.',
+  no_property_access: 'Non hai accesso a questa proprietà Search Console.',
+  properties_unavailable: 'Non è stato possibile leggere le tue proprietà Search Console.',
+  quota_exceeded: 'Quota API di Google superata. Riprova più tardi.',
+  search_analytics_failed: 'Search Console ha rifiutato la richiesta di dati.',
+  storage_failed: 'I dati sono stati scaricati ma non è stato possibile salvarli.',
+  unexpected: 'Qualcosa è andato storto durante la comunicazione con Google.',
 }
 
 export function describeReason(reason: string | undefined, fallback: string): string {
@@ -60,7 +60,7 @@ async function call<T>(action: string, payload: Record<string, unknown> = {}): P
   })
   if (error) {
     throw new Error(
-      'Could not reach the Google integration. Deploy the "google-search-console" Edge Function to your Supabase project.',
+      'Non è stato possibile raggiungere l\'integrazione Google. Distribuisci la Edge Function "google-search-console" sul tuo progetto Supabase.',
     )
   }
   if (data?.error) {

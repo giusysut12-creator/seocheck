@@ -18,15 +18,15 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 function relativeTime(iso: string | null): string {
-  if (!iso) return 'never'
+  if (!iso) return 'mai'
   const diffMs = Date.now() - new Date(iso).getTime()
   const minutes = Math.round(diffMs / 60000)
-  if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
+  if (minutes < 1) return 'proprio ora'
+  if (minutes < 60) return `${minutes} minut${minutes === 1 ? 'o' : 'i'} fa`
   const hours = Math.round(minutes / 60)
-  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`
+  if (hours < 24) return `${hours} or${hours === 1 ? 'a' : 'e'} fa`
   const days = Math.round(hours / 24)
-  return `${days} day${days === 1 ? '' : 's'} ago`
+  return `${days} giorn${days === 1 ? 'o' : 'i'} fa`
 }
 
 /**
@@ -47,8 +47,8 @@ export function GoogleConnectionCard({ projectId, onSynced }: { projectId?: stri
   React.useEffect(() => {
     const result = params.get('google')
     if (!result) return
-    if (result === 'connected') setMessage('Google account connected.')
-    else setFailure(`Google authorization failed (${params.get('reason') ?? 'unknown'}). Please try again.`)
+    if (result === 'connected') setMessage('Account Google connesso.')
+    else setFailure(`Autorizzazione Google non riuscita (${params.get('reason') ?? 'sconosciuto'}). Riprova.`)
     params.delete('google')
     params.delete('reason')
     setParams(params, { replace: true })
@@ -62,7 +62,7 @@ export function GoogleConnectionCard({ projectId, onSynced }: { projectId?: stri
     try {
       await fn()
     } catch (err) {
-      setFailure(err instanceof Error ? err.message : 'Something went wrong')
+      setFailure(err instanceof Error ? err.message : 'Qualcosa è andato storto')
     } finally {
       setBusy(null)
     }
@@ -71,7 +71,7 @@ export function GoogleConnectionCard({ projectId, onSynced }: { projectId?: stri
   if (loading) {
     return (
       <Card>
-        <CardContent className="p-5 text-sm text-muted-foreground">Checking Google connection…</CardContent>
+        <CardContent className="p-5 text-sm text-muted-foreground">Verifica della connessione Google…</CardContent>
       </Card>
     )
   }
@@ -80,7 +80,7 @@ export function GoogleConnectionCard({ projectId, onSynced }: { projectId?: stri
     return (
       <Card className="border-destructive/40">
         <CardContent className="p-5">
-          <p className="text-sm font-medium text-foreground">Google integration unavailable</p>
+          <p className="text-sm font-medium text-foreground">Integrazione Google non disponibile</p>
           <p className="mt-1 text-xs text-muted-foreground">{error}</p>
         </CardContent>
       </Card>
@@ -93,8 +93,8 @@ export function GoogleConnectionCard({ projectId, onSynced }: { projectId?: stri
         <CardHeader>
           <CardTitle className="text-foreground">Google Search Console</CardTitle>
           <CardDescription>
-            Not set up yet. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET as Supabase Edge Function secrets to enable
-            it — see the README for the Google Cloud steps.
+            Non ancora configurato. Aggiungi GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET come variabili segrete della
+            Edge Function Supabase per attivarlo — vedi il README per i passaggi su Google Cloud.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -108,13 +108,13 @@ export function GoogleConnectionCard({ projectId, onSynced }: { projectId?: stri
           <CardTitle className="flex items-center gap-2 text-foreground">Google Search Console</CardTitle>
           <CardDescription>
             {status.connected
-              ? `Connected as ${status.googleEmail ?? 'your Google account'}`
-              : 'Import your real organic keywords, clicks, impressions and rankings.'}
+              ? `Connesso come ${status.googleEmail ?? 'il tuo account Google'}`
+              : 'Importa le tue vere parole chiave organiche, clic, impressioni e posizionamenti.'}
           </CardDescription>
         </div>
         <Badge variant={status.connected ? 'success' : 'outline'}>
           {status.connected ? <CheckCircle2 className="size-3" /> : <XCircle className="size-3" />}
-          {status.connected ? 'Connected' : 'Not connected'}
+          {status.connected ? 'Connesso' : 'Non connesso'}
         </Badge>
       </CardHeader>
 
@@ -131,7 +131,7 @@ export function GoogleConnectionCard({ projectId, onSynced }: { projectId?: stri
             }
           >
             {busy === 'connect' ? <Loader2 className="size-4 animate-spin" /> : <Link2 className="size-4" />}
-            Connect Google
+            Connetti Google
           </Button>
         ) : (
           <>
@@ -139,9 +139,9 @@ export function GoogleConnectionCard({ projectId, onSynced }: { projectId?: stri
               <div className="space-y-3 rounded-md border border-border p-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Property</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Proprietà</p>
                     <p className="truncate text-sm text-foreground">
-                      {status.property?.property_url ?? 'No property selected for this project'}
+                      {status.property?.property_url ?? 'Nessuna proprietà selezionata per questo progetto'}
                     </p>
                   </div>
                   <Button
@@ -151,7 +151,7 @@ export function GoogleConnectionCard({ projectId, onSynced }: { projectId?: stri
                     onClick={() => run('properties', async () => setProperties(await listProperties()))}
                   >
                     {busy === 'properties' ? <Loader2 className="size-4 animate-spin" /> : null}
-                    {status.property ? 'Change' : 'Select property'}
+                    {status.property ? 'Cambia' : 'Seleziona proprietà'}
                   </Button>
                 </div>
 
@@ -159,7 +159,7 @@ export function GoogleConnectionCard({ projectId, onSynced }: { projectId?: stri
                   <div className="space-y-2">
                     {properties.length === 0 ? (
                       <p className="text-xs text-muted-foreground">
-                        This Google account has no Search Console properties. Verify your site in Search Console first.
+                        Questo account Google non ha proprietà Search Console. Verifica prima il tuo sito in Search Console.
                       </p>
                     ) : (
                       <Select
@@ -167,13 +167,13 @@ export function GoogleConnectionCard({ projectId, onSynced }: { projectId?: stri
                           run('select', async () => {
                             await selectProperty(projectId, value)
                             setProperties(null)
-                            setMessage('Property linked to this project.')
+                            setMessage('Proprietà collegata a questo progetto.')
                             await refresh()
                           })
                         }
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="Select a Search Console property" />
+                          <SelectValue placeholder="Seleziona una proprietà Search Console" />
                         </SelectTrigger>
                         <SelectContent>
                           {properties.map((p) => (
@@ -209,7 +209,7 @@ export function GoogleConnectionCard({ projectId, onSynced }: { projectId?: stri
                         run('sync', async () => {
                           const result = await syncSearchConsole(projectId, range)
                           setMessage(
-                            `Imported ${result.rows_imported ?? 0} rows (${result.date_from} → ${result.date_to}).`,
+                            `Importate ${result.rows_imported ?? 0} righe (${result.date_from} → ${result.date_to}).`,
                           )
                           await refresh()
                           onSynced?.()
@@ -217,11 +217,11 @@ export function GoogleConnectionCard({ projectId, onSynced }: { projectId?: stri
                       }
                     >
                       {busy === 'sync' ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-                      Sync now
+                      Sincronizza ora
                     </Button>
                     <span className="text-xs text-muted-foreground">
-                      Last synchronized: {relativeTime(status.lastSync?.completed_at ?? null)}
-                      {status.lastSync?.status === 'failed' && ' — last run failed'}
+                      Ultima sincronizzazione: {relativeTime(status.lastSync?.completed_at ?? null)}
+                      {status.lastSync?.status === 'failed' && ' — ultimo tentativo non riuscito'}
                     </span>
                   </div>
                 )}
@@ -235,12 +235,12 @@ export function GoogleConnectionCard({ projectId, onSynced }: { projectId?: stri
               onClick={() =>
                 run('disconnect', async () => {
                   await disconnectGoogle()
-                  setMessage('Google account disconnected.')
+                  setMessage('Account Google disconnesso.')
                   await refresh()
                 })
               }
             >
-              <Unlink className="size-4" /> Disconnect
+              <Unlink className="size-4" /> Disconnetti
             </Button>
           </>
         )}

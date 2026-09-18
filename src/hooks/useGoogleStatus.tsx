@@ -11,7 +11,7 @@ export function useGoogleStatus(projectId?: string) {
       setError(null)
       setStatus(await getGoogleStatus(projectId))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not read the Google connection status')
+      setError(err instanceof Error ? err.message : 'Non è stato possibile leggere lo stato della connessione Google')
     } finally {
       setLoading(false)
     }

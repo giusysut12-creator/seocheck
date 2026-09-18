@@ -33,8 +33,8 @@ export default function Settings() {
   return (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h1 className="text-xl font-semibold">Settings</h1>
-        <p className="text-sm text-muted-foreground">Account and integration status.</p>
+        <h1 className="text-xl font-semibold">Impostazioni</h1>
+        <p className="text-sm text-muted-foreground">Account e stato delle integrazioni.</p>
       </div>
 
       <Card>
@@ -47,24 +47,24 @@ export default function Settings() {
             <span className="font-medium text-foreground">{user?.email}</span>
           </div>
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Projects</span>
+            <span className="text-muted-foreground">Progetti</span>
             <span className="font-medium text-foreground">{projects.length}</span>
           </div>
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Appearance</span>
+            <span className="text-muted-foreground">Aspetto</span>
             <Select value={theme} onValueChange={(v) => setTheme(v as 'light' | 'dark' | 'system')}>
               <SelectTrigger className="w-32">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="system">System</SelectItem>
-                <SelectItem value="light">Light</SelectItem>
-                <SelectItem value="dark">Dark</SelectItem>
+                <SelectItem value="system">Sistema</SelectItem>
+                <SelectItem value="light">Chiaro</SelectItem>
+                <SelectItem value="dark">Scuro</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <Button variant="outline" size="sm" onClick={() => signOut()}>
-            Sign out
+            Esci
           </Button>
         </CardContent>
       </Card>
@@ -73,23 +73,23 @@ export default function Settings() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-foreground">Integrations</CardTitle>
-          <CardDescription>Configured via server-side secrets on your Supabase Edge Functions — never exposed to the browser.</CardDescription>
+          <CardTitle className="text-foreground">Integrazioni</CardTitle>
+          <CardDescription>Configurate tramite variabili segrete lato server sulle tue Edge Functions Supabase — mai esposte al browser.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <IntegrationRow
-            name="SEO Data Provider"
-            description="Powers keywords, rankings, competitors, backlinks, and traffic estimates. Set SEO_API_URL and SEO_API_KEY."
+            name="Provider dati SEO"
+            description="Alimenta parole chiave, posizionamento, concorrenti, backlink e stime di traffico. Imposta SEO_API_URL e SEO_API_KEY."
             configured={seoConfigured}
           />
           <IntegrationRow
-            name="AI SEO Assistant"
-            description="Answers questions grounded in your project's data. Set AI_API_KEY (Anthropic Messages API)."
+            name="Assistente SEO AI"
+            description="Risponde alle domande basandosi solo sui dati del tuo progetto. Imposta AI_API_KEY (Anthropic Messages API)."
             configured={aiConfigured}
           />
           <IntegrationRow
-            name="Site Audit Crawler"
-            description="Built-in — needs no API key, but the crawl-site Edge Function must be deployed to your Supabase project."
+            name="Crawler di controllo del sito"
+            description="Integrato — non richiede una API key, ma la Edge Function crawl-site deve essere distribuita sul tuo progetto Supabase."
             configured={crawlerDeployed}
           />
         </CardContent>
@@ -97,16 +97,16 @@ export default function Settings() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-foreground">Your projects</CardTitle>
+          <CardTitle className="text-foreground">I tuoi progetti</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           {projects.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No projects yet.</p>
+            <p className="text-sm text-muted-foreground">Nessun progetto ancora.</p>
           ) : (
             projects.map((p) => (
               <div key={p.id} className="flex items-center justify-between border-b border-border py-2 text-sm last:border-0">
                 <span className="font-medium text-foreground">{p.domain}</span>
-                <span className="text-xs text-muted-foreground">created {formatDate(p.created_at)}</span>
+                <span className="text-xs text-muted-foreground">creato il {formatDate(p.created_at)}</span>
               </div>
             ))
           )}
@@ -124,14 +124,14 @@ function IntegrationRow({ name, description, configured }: { name: string; descr
         <p className="text-xs text-muted-foreground">{description}</p>
       </div>
       {configured === null ? (
-        <Badge variant="outline">Checking…</Badge>
+        <Badge variant="outline">Verifica…</Badge>
       ) : configured ? (
         <Badge variant="success">
-          <CheckCircle2 className="size-3" /> Connected
+          <CheckCircle2 className="size-3" /> Connesso
         </Badge>
       ) : (
         <Badge variant="outline">
-          <XCircle className="size-3" /> Not connected
+          <XCircle className="size-3" /> Non connesso
         </Badge>
       )}
     </div>

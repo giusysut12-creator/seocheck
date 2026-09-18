@@ -33,7 +33,7 @@ export default function Competitors() {
         const data = await seoProvider.getCompetitors(project!.domain, { country: project!.country })
         if (!cancelled) setCompetitors(data)
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load competitors')
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Caricamento concorrenti non riuscito')
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -45,29 +45,29 @@ export default function Competitors() {
   }, [project])
 
   if (!project) return null
-  if (loading) return <div className="py-16 text-center text-sm text-muted-foreground">Loading competitors…</div>
+  if (loading) return <div className="py-16 text-center text-sm text-muted-foreground">Caricamento concorrenti…</div>
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold">Competitors</h1>
-        <p className="text-sm text-muted-foreground">Organic competitors of {project.domain}.</p>
+        <h1 className="text-xl font-semibold">Concorrenti</h1>
+        <p className="text-sm text-muted-foreground">Concorrenti organici di {project.domain}.</p>
       </div>
 
       {configured === false ? (
-        <ProviderNotConfigured feature="automatic competitor discovery and keyword gap analysis" />
+        <ProviderNotConfigured feature="la scoperta automatica dei concorrenti e l'analisi del gap di parole chiave" />
       ) : error ? (
-        <EmptyState title="Could not load competitor data" description={error} />
+        <EmptyState title="Non è stato possibile caricare i dati sui concorrenti" description={error} />
       ) : (
         <Tabs defaultValue="overview">
           <TabsList>
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="gap">Keyword Gap</TabsTrigger>
+            <TabsTrigger value="overview">Panoramica</TabsTrigger>
+            <TabsTrigger value="gap">Gap di parole chiave</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-4">
             {competitors.length === 0 ? (
-              <EmptyState title="No competitors detected yet" description="Run more Site Audits and keyword lookups to help detect organic competitors." />
+              <EmptyState title="Ancora nessun concorrente rilevato" description="Esegui più controlli del sito e ricerche di parole chiave per aiutare a rilevare i concorrenti organici." />
             ) : (
               <>
                 <Card>
@@ -86,12 +86,12 @@ export default function Competitors() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Competitor</TableHead>
-                      <TableHead>Organic Traffic</TableHead>
-                      <TableHead>Keywords</TableHead>
-                      <TableHead>Common Keywords</TableHead>
-                      <TableHead>Est. Traffic Value</TableHead>
-                      <TableHead>Visibility</TableHead>
+                      <TableHead>Concorrente</TableHead>
+                      <TableHead>Traffico organico</TableHead>
+                      <TableHead>Parole chiave</TableHead>
+                      <TableHead>Parole chiave comuni</TableHead>
+                      <TableHead>Valore traffico stimato</TableHead>
+                      <TableHead>Visibilità</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -171,35 +171,35 @@ function KeywordGap({ domain, country, device }: { domain: string; country: stri
           <Input
             key={i}
             value={value}
-            placeholder={`Competitor ${i + 1} domain`}
+            placeholder={`Dominio concorrente ${i + 1}`}
             onChange={(e) => setCompetitorDomains((prev) => prev.map((d, idx) => (idx === i ? e.target.value : d)))}
             className="w-48"
           />
         ))}
         <Button variant="accent" onClick={handleCompare} disabled={loading}>
-          {loading ? 'Comparing…' : 'Compare'}
+          {loading ? 'Confronto in corso…' : 'Confronta'}
         </Button>
       </div>
 
       {result && (
         <>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <StatBox label="Common Keywords" value={rows.filter((r) => r.yourPosition !== null).length} />
-            <StatBox label="You Don't Rank" value={rows.filter((r) => r.yourPosition === null).length} />
-            <StatBox label="You Rank Lower" value={rows.filter((r) => r.yourPosition !== null).length} />
-            <StatBox label="High-Value Gaps" value={rows.filter((r) => r.opportunity === 'HIGH').length} />
+            <StatBox label="Parole chiave comuni" value={rows.filter((r) => r.yourPosition !== null).length} />
+            <StatBox label="Non ti posizioni" value={rows.filter((r) => r.yourPosition === null).length} />
+            <StatBox label="Ti posizioni più in basso" value={rows.filter((r) => r.yourPosition !== null).length} />
+            <StatBox label="Gap ad alto valore" value={rows.filter((r) => r.opportunity === 'HIGH').length} />
           </div>
           {rows.length === 0 ? (
-            <EmptyState title="No gap found" description="No keyword gaps detected between the compared domains." />
+            <EmptyState title="Nessun gap trovato" description="Nessun gap di parole chiave rilevato tra i domini confrontati." />
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Keyword</TableHead>
-                  <TableHead>Your Position</TableHead>
-                  <TableHead>Competitor</TableHead>
-                  <TableHead>Competitor Position</TableHead>
-                  <TableHead>Opportunity</TableHead>
+                  <TableHead>Parola chiave</TableHead>
+                  <TableHead>La tua posizione</TableHead>
+                  <TableHead>Concorrente</TableHead>
+                  <TableHead>Posizione concorrente</TableHead>
+                  <TableHead>Opportunità</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

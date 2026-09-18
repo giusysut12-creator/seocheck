@@ -29,7 +29,7 @@ export default function Signup() {
       setError(signUpError)
       return
     }
-    setInfo('Account created. Check your inbox to confirm your email, then sign in.')
+    setInfo('Account creato. Controlla la posta per confermare l\'email, poi accedi.')
     setTimeout(() => navigate('/login'), 1800)
   }
 
@@ -44,14 +44,14 @@ export default function Signup() {
         </div>
         <Card>
           <CardHeader>
-            <CardTitle className="text-foreground text-lg">Create your account</CardTitle>
-            <CardDescription>Start analyzing your website's SEO in minutes</CardDescription>
+            <CardTitle className="text-foreground text-lg">Crea il tuo account</CardTitle>
+            <CardDescription>Inizia ad analizzare la SEO del tuo sito in pochi minuti</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1.5">
-                <Label htmlFor="fullName">Full name</Label>
-                <Input id="fullName" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Jane Doe" />
+                <Label htmlFor="fullName">Nome completo</Label>
+                <Input id="fullName" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Mario Rossi" />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="email">Email</Label>
@@ -61,7 +61,7 @@ export default function Signup() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@company.com"
+                  placeholder="tu@azienda.it"
                 />
               </div>
               <div className="space-y-1.5">
@@ -73,21 +73,21 @@ export default function Signup() {
                   minLength={6}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="At least 6 characters"
+                  placeholder="Almeno 6 caratteri"
                 />
               </div>
               {error && <p className="text-xs text-destructive">{error}</p>}
               {info && <p className="text-xs text-success">{info}</p>}
               <Button type="submit" variant="accent" className="w-full" disabled={submitting}>
-                {submitting ? 'Creating account…' : 'Sign up'}
+                {submitting ? 'Creazione account…' : 'Registrati'}
               </Button>
             </form>
           </CardContent>
         </Card>
         <p className="text-center text-sm text-muted-foreground">
-          Already have an account?{' '}
+          Hai già un account?{' '}
           <Link to="/login" className="text-accent hover:underline">
-            Sign in
+            Accedi
           </Link>
         </p>
       </div>

@@ -25,15 +25,15 @@ export function Topbar() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted">
-            <span className="max-w-[220px] truncate">{current ? current.domain : 'Select a project'}</span>
+            <span className="max-w-[220px] truncate">{current ? current.domain : 'Seleziona un progetto'}</span>
             <ChevronDown className="size-3.5 opacity-60" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-64">
-          <DropdownMenuLabel>Your projects</DropdownMenuLabel>
+          <DropdownMenuLabel>I tuoi progetti</DropdownMenuLabel>
           <DropdownMenuSeparator />
           {projects.length === 0 && (
-            <div className="px-2 py-3 text-xs text-muted-foreground">No projects yet.</div>
+            <div className="px-2 py-3 text-xs text-muted-foreground">Nessun progetto ancora.</div>
           )}
           {projects.map((p) => (
             <DropdownMenuItem key={p.id} onClick={() => navigate(`/projects/${p.id}`)}>
@@ -42,7 +42,7 @@ export function Topbar() {
           ))}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => navigate('/projects')}>
-            <Plus className="size-4" /> New project
+            <Plus className="size-4" /> Nuovo progetto
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -57,10 +57,10 @@ export function Topbar() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
-          <DropdownMenuItem onClick={() => navigate('/settings')}>Settings</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => navigate('/settings')}>Impostazioni</DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => signOut()}>
-            <LogOut className="size-4" /> Sign out
+            <LogOut className="size-4" /> Esci
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

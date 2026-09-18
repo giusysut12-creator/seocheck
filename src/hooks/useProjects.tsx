@@ -62,10 +62,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
   const createProject = React.useCallback<ProjectsContextValue['createProject']>(
     async (input) => {
-      if (!user) return { project: null, error: 'You must be signed in.' }
+      if (!user) return { project: null, error: 'Devi accedere per continuare.' }
       const domain = normalizeDomain(input.domain)
       if (!domain || !/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(domain)) {
-        return { project: null, error: 'Enter a valid domain, e.g. example.com' }
+        return { project: null, error: 'Inserisci un dominio valido, es. esempio.it' }
       }
       const { data, error: insertError } = await supabase
         .from('projects')

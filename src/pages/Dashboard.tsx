@@ -7,7 +7,7 @@ export default function Dashboard() {
   const { projects, loading } = useProjects()
 
   if (loading) {
-    return <div className="py-16 text-center text-sm text-muted-foreground">Loading your projects…</div>
+    return <div className="py-16 text-center text-sm text-muted-foreground">Caricamento dei tuoi progetti…</div>
   }
 
   if (projects.length === 0) {

@@ -152,47 +152,45 @@ export function recommendActions(input: OpportunityInput, page: CrawledPageFacts
 
   if (page) {
     if (!page.title) {
-      actions.push('Add a title tag — this page has none')
+      actions.push('Aggiungi un tag title — questa pagina non ne ha uno')
     } else if (!page.title.toLowerCase().includes(keyword)) {
-      actions.push(`Work "${input.keyword}" into the title tag, which does not currently mention it`)
+      actions.push(`Inserisci "${input.keyword}" nel tag title, che attualmente non lo menziona`)
     }
 
     if (!page.metaDescription) {
-      actions.push('Write a meta description to improve the click-through rate from search results')
+      actions.push('Scrivi una meta description per migliorare il tasso di clic dai risultati di ricerca')
     }
 
     if (!page.h1) {
-      actions.push('Add an H1 stating the page topic')
+      actions.push('Aggiungi un H1 che indichi l\'argomento della pagina')
     } else if (!page.h1.toLowerCase().includes(keyword)) {
-      actions.push(`Align the H1 with "${input.keyword}"`)
+      actions.push(`Allinea l\'H1 con "${input.keyword}"`)
     }
 
     if (page.wordCount !== null && page.wordCount < 800) {
-      actions.push(`Deepen the content — the crawler measured ${page.wordCount} words on this page`)
+      actions.push(`Approfondisci il contenuto — il crawler ha misurato ${page.wordCount} parole su questa pagina`)
     }
 
     if (page.internalLinksCount < 5) {
       actions.push(
-        `Add internal links to this page — the crawler found ${page.internalLinksCount} outgoing internal link${
-          page.internalLinksCount === 1 ? '' : 's'
-        } on it`,
+        `Aggiungi link interni a questa pagina — il crawler ha trovato ${page.internalLinksCount} link interni in uscita su di essa`,
       )
     }
 
     if (page.imagesMissingAlt > 0) {
-      actions.push(`Add alt text to ${page.imagesMissingAlt} image${page.imagesMissingAlt === 1 ? '' : 's'}`)
+      actions.push(`Aggiungi testo alternativo a ${page.imagesMissingAlt} immagine/i`)
     }
   }
 
   // CTR is measured, so this recommendation stands on its own.
   if (input.position !== null && input.position <= 10 && input.ctr < modelledCtr(input.position) / 2) {
     actions.push(
-      'Rewrite the title and meta description: the page ranks on page one but is clicked far less often than that position usually earns',
+      'Riscrivi il titolo e la meta description: la pagina si posiziona in prima pagina ma viene cliccata molto meno di quanto quella posizione normalmente ottenga',
     )
   }
 
   if (actions.length === 0) {
-    actions.push('Review how well the page matches what someone searching this keyword actually wants')
+    actions.push('Verifica quanto la pagina corrisponda a ciò che cerca davvero chi digita questa parola chiave')
   }
 
   return actions
@@ -202,7 +200,7 @@ export function recommendActions(input: OpportunityInput, page: CrawledPageFacts
 export function explainOpportunity(input: OpportunityInput, result: OpportunityResult): string {
   const position = input.position?.toFixed(1) ?? '—'
   if (input.position !== null && input.position > 10) {
-    return `This page receives ${input.impressions.toLocaleString()} impressions but ranks at position ${position}, outside the top 10. Reaching position ${TARGET_POSITION} would be worth roughly ${result.potentialClicks.toLocaleString()} more clicks at today's demand.`
+    return `Questa pagina riceve ${input.impressions.toLocaleString()} impressioni ma si posiziona alla posizione ${position}, fuori dalla top 10. Raggiungere la posizione ${TARGET_POSITION} varrebbe circa ${result.potentialClicks.toLocaleString()} clic in più alla domanda attuale.`
   }
-  return `This keyword already ranks at position ${position} with ${input.impressions.toLocaleString()} impressions. Closing the gap to position ${TARGET_POSITION} would be worth roughly ${result.potentialClicks.toLocaleString()} more clicks.`
+  return `Questa parola chiave si posiziona già alla posizione ${position} con ${input.impressions.toLocaleString()} impressioni. Chiudere il gap verso la posizione ${TARGET_POSITION} varrebbe circa ${result.potentialClicks.toLocaleString()} clic in più.`
 }

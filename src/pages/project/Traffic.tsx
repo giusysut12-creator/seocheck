@@ -11,11 +11,11 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatNumber, formatCurrency, formatDate } from '@/lib/utils'
 
 const RANGES = [
-  { key: '7d', label: '7 days', days: 7 },
-  { key: '30d', label: '30 days', days: 30 },
-  { key: '3m', label: '3 months', days: 90 },
-  { key: '6m', label: '6 months', days: 180 },
-  { key: '12m', label: '12 months', days: 365 },
+  { key: '7d', label: '7 giorni', days: 7 },
+  { key: '30d', label: '30 giorni', days: 30 },
+  { key: '3m', label: '3 mesi', days: 90 },
+  { key: '6m', label: '6 mesi', days: 180 },
+  { key: '12m', label: '12 mesi', days: 365 },
 ] as const
 
 export default function Traffic() {
@@ -39,7 +39,7 @@ export default function Traffic() {
         const data = await seoProvider.getTrafficEstimate(project!.domain)
         if (!cancelled) setPoints(data)
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load traffic data')
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Caricamento dati di traffico non riuscito')
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -51,7 +51,7 @@ export default function Traffic() {
   }, [project])
 
   if (!project) return null
-  if (loading) return <div className="py-16 text-center text-sm text-muted-foreground">Loading traffic data…</div>
+  if (loading) return <div className="py-16 text-center text-sm text-muted-foreground">Caricamento dati di traffico…</div>
 
   const days = RANGES.find((r) => r.key === range)!.days
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
@@ -62,22 +62,22 @@ export default function Traffic() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Traffic</h1>
+          <h1 className="text-xl font-semibold">Traffico</h1>
           <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
             <Info className="size-3.5" />
-            All figures below are <strong className="font-medium text-foreground">estimated organic traffic</strong> from your SEO
-            data provider — not actual analytics. Connect Google Analytics/Search Console (not included in this MVP) for real
-            traffic figures.
+            Tutti i dati qui sotto sono <strong className="font-medium text-foreground">traffico organico stimato</strong> dal tuo
+            provider dati SEO — non analitiche reali. Connetti Google Analytics/Search Console (non incluso in questo MVP) per dati
+            di traffico reali.
           </p>
         </div>
       </div>
 
       {configured === false ? (
-        <ProviderNotConfigured feature="organic traffic estimation" />
+        <ProviderNotConfigured feature="la stima del traffico organico" />
       ) : error ? (
-        <EmptyState title="Could not load traffic data" description={error} />
+        <EmptyState title="Non è stato possibile caricare i dati di traffico" description={error} />
       ) : points.length === 0 ? (
-        <EmptyState title="No traffic data yet" description="Your connected provider returned no traffic history for this domain yet." />
+        <EmptyState title="Ancora nessun dato di traffico" description="Il tuo provider connesso non ha ancora restituito una cronologia di traffico per questo dominio." />
       ) : (
         <>
           <Tabs value={range} onValueChange={(v) => setRange(v as typeof range)}>
@@ -94,19 +94,19 @@ export default function Traffic() {
             <Card>
               <CardContent className="p-4">
                 <p className="text-2xl font-semibold text-foreground">{formatNumber(latest?.organicTraffic ?? null)}</p>
-                <p className="text-xs text-muted-foreground">Est. Organic Traffic (latest)</p>
+                <p className="text-xs text-muted-foreground">Traffico organico stimato (ultimo)</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <p className="text-2xl font-semibold text-foreground">{formatNumber(latest?.organicKeywords ?? null)}</p>
-                <p className="text-xs text-muted-foreground">Organic Keywords</p>
+                <p className="text-xs text-muted-foreground">Parole chiave organiche</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <p className="text-2xl font-semibold text-foreground">{formatCurrency(latest?.trafficValue ?? null)}</p>
-                <p className="text-xs text-muted-foreground">Est. Traffic Value</p>
+                <p className="text-xs text-muted-foreground">Valore traffico stimato</p>
               </CardContent>
             </Card>
           </div>

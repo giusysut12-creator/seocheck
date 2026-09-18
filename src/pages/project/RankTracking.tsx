@@ -111,14 +111,14 @@ export default function RankTracking() {
       }
       await loadKeywords()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to refresh rankings')
+      setError(err instanceof Error ? err.message : 'Aggiornamento posizioni non riuscito')
     } finally {
       setRefreshing(false)
     }
   }
 
   if (!project) return null
-  if (loading) return <div className="py-16 text-center text-sm text-muted-foreground">Loading rank tracking…</div>
+  if (loading) return <div className="py-16 text-center text-sm text-muted-foreground">Caricamento monitoraggio posizionamento…</div>
 
   const dates = Array.from(new Set(history.map((h) => h.date))).sort()
   const chartData = dates.map((date) => {
@@ -137,45 +137,45 @@ export default function RankTracking() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Rank Tracking</h1>
-          <p className="text-sm text-muted-foreground">Track keyword positions over time for {project.domain}.</p>
+          <h1 className="text-xl font-semibold">Monitoraggio posizionamento</h1>
+          <p className="text-sm text-muted-foreground">Segui le posizioni delle parole chiave nel tempo per {project.domain}.</p>
         </div>
         <div className="flex gap-2">
           <Dialog open={addOpen} onOpenChange={setAddOpen}>
             <DialogTrigger asChild>
               <Button variant="outline">
-                <Plus className="size-4" /> Add keywords
+                <Plus className="size-4" /> Aggiungi parole chiave
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Add keywords to track</DialogTitle>
+                <DialogTitle>Aggiungi parole chiave da monitorare</DialogTitle>
               </DialogHeader>
               <Textarea
                 value={newKeywords}
                 onChange={(e) => setNewKeywords(e.target.value)}
-                placeholder={'One keyword per line, e.g.\nseo tool\nseo audit\nkeyword research'}
+                placeholder={'Una parola chiave per riga, es.\ntool seo\ncontrollo seo\nricerca parole chiave'}
                 rows={6}
               />
               <DialogFooter>
                 <Button variant="accent" onClick={handleAddKeywords}>
-                  Add
+                  Aggiungi
                 </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
           <Button variant="accent" onClick={handleRefresh} disabled={refreshing || keywords.length === 0}>
             {refreshing ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-            Refresh rankings
+            Aggiorna posizioni
           </Button>
         </div>
       </div>
 
       {error && <p className="text-xs text-destructive">{error}</p>}
-      {configured === false && <ProviderNotConfigured feature="live keyword position tracking" />}
+      {configured === false && <ProviderNotConfigured feature="il monitoraggio in tempo reale delle posizioni delle parole chiave" />}
 
       {keywords.length === 0 ? (
-        <EmptyState title="No tracked keywords yet" description="Add keywords above to start tracking their ranking position over time." />
+        <EmptyState title="Ancora nessuna parola chiave monitorata" description="Aggiungi parole chiave qui sopra per iniziare a monitorare la loro posizione nel tempo." />
       ) : (
         <>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -188,7 +188,7 @@ export default function RankTracking() {
           {chartData.length > 1 && (
             <Card>
               <CardContent className="h-64 p-4">
-                <p className="mb-2 text-xs font-medium text-muted-foreground">Average position over time (lower is better)</p>
+                <p className="mb-2 text-xs font-medium text-muted-foreground">Posizione media nel tempo (più basso è meglio)</p>
                 <ResponsiveContainer width="100%" height="90%">
                   <LineChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
@@ -205,12 +205,12 @@ export default function RankTracking() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Keyword</TableHead>
-                <TableHead>Position</TableHead>
-                <TableHead>Change</TableHead>
-                <TableHead>Best</TableHead>
+                <TableHead>Parola chiave</TableHead>
+                <TableHead>Posizione</TableHead>
+                <TableHead>Variazione</TableHead>
+                <TableHead>Migliore</TableHead>
                 <TableHead>URL</TableHead>
-                <TableHead>SERP Features</TableHead>
+                <TableHead>Funzionalità SERP</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

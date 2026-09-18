@@ -55,8 +55,8 @@ export default function PageDetail() {
     }
   }, [id, pageId, range])
 
-  if (loading) return <div className="py-16 text-center text-sm text-muted-foreground">Loading page…</div>
-  if (!page) return <EmptyState title="Page not found" description="This page is no longer in the project." />
+  if (loading) return <div className="py-16 text-center text-sm text-muted-foreground">Caricamento pagina…</div>
+  if (!page) return <EmptyState title="Pagina non trovata" description="Questa pagina non fa più parte del progetto." />
 
   return (
     <div className="space-y-6">
@@ -64,7 +64,7 @@ export default function PageDetail() {
         <div className="min-w-0">
           <Button variant="ghost" size="sm" asChild className="mb-1 -ml-2">
             <Link to={`/projects/${id}/pages`}>
-              <ArrowLeft className="size-4" /> All pages
+              <ArrowLeft className="size-4" /> Tutte le pagine
             </Link>
           </Button>
           <h1 className="break-all text-lg font-semibold">{page.url}</h1>
@@ -74,7 +74,7 @@ export default function PageDetail() {
             rel="noreferrer"
             className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
           >
-            Open page <ExternalLink className="size-3" />
+            Apri pagina <ExternalLink className="size-3" />
           </a>
         </div>
         <Select value={range} onValueChange={(v) => setRange(v as SyncRange)}>
@@ -94,25 +94,25 @@ export default function PageDetail() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-foreground">Organic performance</CardTitle>
-            <CardDescription>Source: Google Search Console</CardDescription>
+            <CardTitle className="text-foreground">Performance organiche</CardTitle>
+            <CardDescription>Fonte: Google Search Console</CardDescription>
           </CardHeader>
           <CardContent>
             {organic ? (
               <div className="grid grid-cols-2 gap-4">
-                <Stat label="Clicks" value={formatNumber(organic.clicks)} />
-                <Stat label="Impressions" value={formatNumber(organic.impressions)} />
+                <Stat label="Clic" value={formatNumber(organic.clicks)} />
+                <Stat label="Impressioni" value={formatNumber(organic.impressions)} />
                 <Stat label="CTR" value={`${(organic.ctr * 100).toFixed(2)}%`} />
                 <Stat
-                  label="Average position"
+                  label="Posizione media"
                   value={organic.position != null ? organic.position.toFixed(1) : '—'}
                 />
-                <Stat label="Ranking keywords" value={formatNumber(organic.keyword_count)} />
-                <Stat label="Top keyword" value={organic.top_keyword ?? '—'} />
+                <Stat label="Parole chiave posizionate" value={formatNumber(organic.keyword_count)} />
+                <Stat label="Parola chiave principale" value={organic.top_keyword ?? '—'} />
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                No Search Console data for this URL in the selected period.
+                Nessun dato Search Console per questo URL nel periodo selezionato.
               </p>
             )}
           </CardContent>
@@ -120,18 +120,18 @@ export default function PageDetail() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-foreground">On-page &amp; technical</CardTitle>
-            <CardDescription>Source: Site Audit crawler</CardDescription>
+            <CardTitle className="text-foreground">On-page e tecnica</CardTitle>
+            <CardDescription>Fonte: crawler di controllo del sito</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <Field label="Title" value={page.title} check={Boolean(page.title)} />
             <Field label="Meta description" value={page.meta_description} check={Boolean(page.meta_description)} />
             <Field label="H1" value={page.h1} check={page.h1_count === 1} />
             <div className="grid grid-cols-2 gap-3 pt-1">
-              <Stat label="Word count" value={formatNumber(page.word_count)} />
-              <Stat label="Internal links" value={formatNumber(page.internal_links_count)} />
-              <Stat label="Images without alt" value={formatNumber(page.images_missing_alt_count)} />
-              <Stat label="Status code" value={String(page.status_code ?? '—')} />
+              <Stat label="Numero di parole" value={formatNumber(page.word_count)} />
+              <Stat label="Link interni" value={formatNumber(page.internal_links_count)} />
+              <Stat label="Immagini senza alt" value={formatNumber(page.images_missing_alt_count)} />
+              <Stat label="Codice di stato" value={String(page.status_code ?? '—')} />
             </div>
           </CardContent>
         </Card>
@@ -139,21 +139,21 @@ export default function PageDetail() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-foreground">Keywords ranking with this page</CardTitle>
-          <CardDescription>Source: Google Search Console</CardDescription>
+          <CardTitle className="text-foreground">Parole chiave posizionate con questa pagina</CardTitle>
+          <CardDescription>Fonte: Google Search Console</CardDescription>
         </CardHeader>
         <CardContent>
           {keywords.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No keywords recorded for this page in the selected period.</p>
+            <p className="text-sm text-muted-foreground">Nessuna parola chiave registrata per questa pagina nel periodo selezionato.</p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Keyword</TableHead>
-                  <TableHead>Clicks</TableHead>
-                  <TableHead>Impressions</TableHead>
+                  <TableHead>Parola chiave</TableHead>
+                  <TableHead>Clic</TableHead>
+                  <TableHead>Impressioni</TableHead>
                   <TableHead>CTR</TableHead>
-                  <TableHead>Avg. Position</TableHead>
+                  <TableHead>Posizione media</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -189,7 +189,7 @@ function Field({ label, value, check }: { label: string; value: string | null; c
     <div>
       <div className="flex items-center gap-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-        <Badge variant={check ? 'success' : 'warning'}>{check ? 'OK' : 'needs attention'}</Badge>
+        <Badge variant={check ? 'success' : 'warning'}>{check ? 'OK' : 'richiede attenzione'}</Badge>
       </div>
       <p className="mt-0.5 break-words text-foreground">{value || '—'}</p>
     </div>

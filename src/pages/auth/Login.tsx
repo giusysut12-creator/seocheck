@@ -37,7 +37,7 @@ export default function Login() {
       const { error: linkError } = await signInWithMagicLink(email)
       setSubmitting(false)
       if (linkError) setError(linkError)
-      else setInfo('Check your inbox for a magic sign-in link.')
+      else setInfo('Controlla la posta: ti abbiamo inviato un link di accesso.')
     }
   }
 
@@ -52,8 +52,8 @@ export default function Login() {
         </div>
         <Card>
           <CardHeader>
-            <CardTitle className="text-foreground text-lg">Sign in</CardTitle>
-            <CardDescription>SEO Intelligence for your website</CardDescription>
+            <CardTitle className="text-foreground text-lg">Accedi</CardTitle>
+            <CardDescription>SEO Intelligence per il tuo sito web</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -65,7 +65,7 @@ export default function Login() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@company.com"
+                  placeholder="tu@azienda.it"
                 />
               </div>
               {mode === 'password' && (
@@ -84,22 +84,22 @@ export default function Login() {
               {error && <p className="text-xs text-destructive">{error}</p>}
               {info && <p className="text-xs text-success">{info}</p>}
               <Button type="submit" variant="accent" className="w-full" disabled={submitting}>
-                {submitting ? 'Please wait…' : mode === 'password' ? 'Sign in' : 'Send magic link'}
+                {submitting ? 'Attendere…' : mode === 'password' ? 'Accedi' : 'Invia link di accesso'}
               </Button>
               <button
                 type="button"
                 className="w-full text-center text-xs text-muted-foreground hover:text-foreground"
                 onClick={() => setMode(mode === 'password' ? 'magic' : 'password')}
               >
-                {mode === 'password' ? 'Use a magic link instead' : 'Use email and password instead'}
+                {mode === 'password' ? 'Usa invece un link di accesso' : 'Usa invece email e password'}
               </button>
             </form>
           </CardContent>
         </Card>
         <p className="text-center text-sm text-muted-foreground">
-          No account?{' '}
+          Non hai un account?{' '}
           <Link to="/signup" className="text-accent hover:underline">
-            Create one
+            Creane uno
           </Link>
         </p>
       </div>

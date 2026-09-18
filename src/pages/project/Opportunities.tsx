@@ -121,7 +121,7 @@ export default function Opportunities() {
   }, [id, range, reloadToken])
 
   if (!project) return null
-  if (loading) return <div className="py-16 text-center text-sm text-muted-foreground">Loading opportunities…</div>
+  if (loading) return <div className="py-16 text-center text-sm text-muted-foreground">Caricamento opportunità…</div>
 
   const connected = status?.connected && status?.property
   const totalPotential = opportunities.reduce((sum, o) => sum + o.potentialClicks, 0)
@@ -130,9 +130,9 @@ export default function Opportunities() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">SEO Opportunities</h1>
+          <h1 className="text-xl font-semibold">Opportunità SEO</h1>
           <p className="text-sm text-muted-foreground">
-            What to work on next for {project.domain}, ordered by the traffic at stake and how quickly it can be won.
+            Su cosa lavorare per {project.domain}, in ordine di traffico in gioco e velocità con cui si può ottenere.
           </p>
         </div>
         <div className="flex items-start gap-2">
@@ -160,8 +160,8 @@ export default function Opportunities() {
         <>
           <EmptyState
             icon={<TrendingUp className="size-5" />}
-            title="Connect Google Search Console"
-            description="Opportunities are built from the queries your site already earns impressions for."
+            title="Connetti Google Search Console"
+            description="Le opportunità si costruiscono dalle query per cui il tuo sito già ottiene impressioni."
           />
           <GoogleConnectionCard projectId={project.id} />
         </>
@@ -172,9 +172,9 @@ export default function Opportunities() {
               <CardContent className="flex items-center gap-3 p-4">
                 <MousePointerClick className="size-5 shrink-0 text-accent" />
                 <p className="text-sm text-foreground">
-                  Acting on everything below is worth roughly{' '}
-                  <strong className="font-semibold">{formatNumber(totalPotential)} more clicks</strong> at today's search
-                  demand — an estimate from your measured impressions and position, not a promise.
+                  Agire su tutto quanto segue vale circa{' '}
+                  <strong className="font-semibold">{formatNumber(totalPotential)} clic in più</strong> alla domanda di
+                  ricerca attuale — una stima dalle tue impressioni e posizione misurate, non una promessa.
                 </p>
               </CardContent>
             </Card>
@@ -182,13 +182,13 @@ export default function Opportunities() {
 
           <Tabs defaultValue="all">
             <TabsList className="flex-wrap">
-              <TabsTrigger value="all">Priority ({opportunities.length})</TabsTrigger>
+              <TabsTrigger value="all">Priorità ({opportunities.length})</TabsTrigger>
               {KIND_ORDER.map((kind) => (
                 <TabsTrigger key={kind} value={kind}>
                   {KIND_LABELS[kind].label} ({byKind.get(kind)!.length})
                 </TabsTrigger>
               ))}
-              <TabsTrigger value="technical">Technical ({technical.length})</TabsTrigger>
+              <TabsTrigger value="technical">Tecniche ({technical.length})</TabsTrigger>
             </TabsList>
 
             <TabsContent value="all">
@@ -206,8 +206,8 @@ export default function Opportunities() {
               {technical.length === 0 ? (
                 <EmptyState
                   icon={<Sparkles className="size-5" />}
-                  title="No technical opportunities"
-                  description="Run a Site Audit to surface technical, internal-linking and content findings from the crawl."
+                  title="Nessuna opportunità tecnica"
+                  description="Avvia un controllo del sito per far emergere i risultati tecnici, di link interni e di contenuto dalla scansione."
                 />
               ) : (
                 technical.map((o) => (
@@ -218,7 +218,7 @@ export default function Opportunities() {
                           <p className="text-sm font-semibold text-foreground">{o.title}</p>
                           <p className="mt-0.5 text-xs text-muted-foreground">{o.description}</p>
                         </div>
-                        <Badge variant="outline">Score {o.opportunity_score}</Badge>
+                        <Badge variant="outline">Punteggio {o.opportunity_score}</Badge>
                       </div>
                       {o.recommended_actions.length > 0 && (
                         <ul className="list-inside list-disc space-y-0.5 text-xs text-foreground">
@@ -227,7 +227,7 @@ export default function Opportunities() {
                           ))}
                         </ul>
                       )}
-                      <p className="text-xs text-muted-foreground">Source: Site Audit crawler</p>
+                      <p className="text-xs text-muted-foreground">Fonte: crawler di controllo del sito</p>
                     </CardContent>
                   </Card>
                 ))
@@ -263,8 +263,8 @@ function OpportunityList({
   if (items.length === 0) {
     return (
       <EmptyState
-        title="Nothing here right now"
-        description="No keyword in the selected period matches this pattern. Try a longer period."
+        title="Al momento non c'è nulla qui"
+        description="Nessuna parola chiave nel periodo selezionato corrisponde a questo pattern. Prova un periodo più lungo."
       />
     )
   }
@@ -293,12 +293,12 @@ function OpportunityList({
                 </div>
                 <div className="shrink-0 text-right">
                   <p className="text-lg font-semibold text-foreground">+{formatNumber(o.potentialClicks)}</p>
-                  <p className="text-xs text-muted-foreground">clicks at stake</p>
+                  <p className="text-xs text-muted-foreground">clic in gioco</p>
                 </div>
               </div>
 
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">What to do</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cosa fare</p>
                 <ul className="mt-1 list-inside list-disc space-y-0.5 text-xs text-foreground">
                   {o.actions.map((action) => (
                     <li key={action}>{action}</li>
@@ -311,11 +311,11 @@ function OpportunityList({
                   to={`/projects/${projectId}/pages/${page.id}`}
                   className="inline-block text-xs text-accent hover:underline"
                 >
-                  Open page analysis →
+                  Apri analisi pagina →
                 </Link>
               ) : o.page ? (
                 <p className="truncate text-xs text-muted-foreground">
-                  {o.page} · not crawled yet — run a Site Audit for on-page detail
+                  {o.page} · non ancora scansionata — avvia un controllo del sito per il dettaglio on-page
                 </p>
               ) : null}
             </CardContent>
@@ -326,11 +326,11 @@ function OpportunityList({
       {totalPages > 1 && (
         <div className="flex items-center justify-between pt-1 text-sm text-muted-foreground">
           <span>
-            Showing {page * PAGE_SIZE + 1}-{Math.min((page + 1) * PAGE_SIZE, items.length)} of {items.length}
+            {page * PAGE_SIZE + 1}-{Math.min((page + 1) * PAGE_SIZE, items.length)} di {items.length}
           </span>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
-              <ChevronLeft className="size-4" /> Previous
+              <ChevronLeft className="size-4" /> Precedente
             </Button>
             <Button
               variant="outline"
@@ -338,7 +338,7 @@ function OpportunityList({
               disabled={page + 1 >= totalPages}
               onClick={() => setPage((p) => p + 1)}
             >
-              Next <ChevronRight className="size-4" />
+              Successiva <ChevronRight className="size-4" />
             </Button>
           </div>
         </div>

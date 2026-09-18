@@ -94,7 +94,7 @@ export default function Reports() {
       .insert({
         project_id: id,
         user_id: user.id,
-        title: `SEO Report — ${project.domain} — ${new Date().toLocaleDateString()}`,
+        title: `Report SEO — ${project.domain} — ${new Date().toLocaleDateString()}`,
         period_start: null,
         period_end: null,
         data: reportData as unknown as Record<string, unknown>,
@@ -115,33 +115,33 @@ export default function Reports() {
     doc.text(report.title, 14, 18)
     doc.setFontSize(10)
     doc.setTextColor(120)
-    doc.text(`Generated ${formatDate(report.created_at)}`, 14, 25)
+    doc.text(`Generato il ${formatDate(report.created_at)}`, 14, 25)
 
     let y = 35
     doc.setTextColor(0)
     doc.setFontSize(12)
-    doc.text('SEO Health Score', 14, y)
+    doc.text('Punteggio di salute SEO', 14, y)
     y += 7
     doc.setFontSize(10)
     if (data.audit) {
       doc.text(
-        `Score: ${data.audit.seo_score ?? '—'}/100  |  Critical: ${data.audit.critical_count}  |  Warnings: ${data.audit.warning_count}  |  Passed: ${data.audit.passed_count}`,
+        `Punteggio: ${data.audit.seo_score ?? '—'}/100  |  Critici: ${data.audit.critical_count}  |  Avvisi: ${data.audit.warning_count}  |  Superati: ${data.audit.passed_count}`,
         14,
         y,
       )
       y += 10
     } else {
-      doc.text('No Site Audit has been run yet.', 14, y)
+      doc.text('Nessun controllo del sito è ancora stato eseguito.', 14, y)
       y += 10
     }
 
     if (data.organic) {
       doc.setFontSize(12)
-      doc.text('Organic Performance (Google Search Console)', 14, y)
+      doc.text('Performance organiche (Google Search Console)', 14, y)
       y += 7
       doc.setFontSize(10)
       doc.text(
-        `${data.periodFrom} to ${data.periodTo}  |  Clicks: ${data.organic.clicks.toLocaleString()}  |  Impressions: ${data.organic.impressions.toLocaleString()}  |  CTR: ${(data.organic.ctr * 100).toFixed(2)}%  |  Avg. position: ${data.organic.position?.toFixed(1) ?? '—'}`,
+        `${data.periodFrom} - ${data.periodTo}  |  Clic: ${data.organic.clicks.toLocaleString()}  |  Impressioni: ${data.organic.impressions.toLocaleString()}  |  CTR: ${(data.organic.ctr * 100).toFixed(2)}%  |  Posizione media: ${data.organic.position?.toFixed(1) ?? '—'}`,
         14,
         y,
       )
@@ -150,7 +150,7 @@ export default function Reports() {
       if (data.topKeywords.length > 0) {
         autoTable(doc, {
           startY: y,
-          head: [['Keyword', 'Clicks', 'Impressions', 'CTR', 'Avg. Position']],
+          head: [['Parola chiave', 'Clic', 'Impressioni', 'CTR', 'Posizione media']],
           body: data.topKeywords.map((k) => [
             k.keyword,
             k.clicks.toLocaleString(),
@@ -168,7 +168,7 @@ export default function Reports() {
       if (data.topPages.length > 0) {
         autoTable(doc, {
           startY: y,
-          head: [['Page', 'Clicks', 'Impressions', 'Keywords', 'Avg. Position']],
+          head: [['Pagina', 'Clic', 'Impressioni', 'Parole chiave', 'Posizione media']],
           body: data.topPages.map((p) => [
             p.page,
             p.clicks.toLocaleString(),
@@ -186,11 +186,11 @@ export default function Reports() {
 
     if (data.issues.length > 0) {
       doc.setFontSize(12)
-      doc.text('Technical Issues (Site Audit crawler)', 14, y)
+      doc.text('Problemi tecnici (crawler di controllo del sito)', 14, y)
       y += 4
       autoTable(doc, {
         startY: y + 4,
-        head: [['Priority', 'Issue', 'Affected URLs']],
+        head: [['Priorità', 'Problema', 'URL interessati']],
         body: data.issues.map((i) => [i.priority, i.title, String(i.affected_count)]),
         styles: { fontSize: 8 },
         headStyles: { fillColor: [79, 70, 229] },
@@ -201,11 +201,11 @@ export default function Reports() {
 
     if (data.opportunities.length > 0) {
       doc.setFontSize(12)
-      doc.text('Top Opportunities', 14, y)
+      doc.text('Migliori opportunità', 14, y)
       y += 4
       autoTable(doc, {
         startY: y + 4,
-        head: [['Category', 'Title', 'Impact', 'Score']],
+        head: [['Categoria', 'Titolo', 'Impatto', 'Punteggio']],
         body: data.opportunities.map((o) => [o.category, o.title, o.potential_impact ?? '—', String(o.opportunity_score)]),
         styles: { fontSize: 8 },
         headStyles: { fillColor: [79, 70, 229] },
@@ -216,26 +216,26 @@ export default function Reports() {
   }
 
   if (!project) return null
-  if (loading) return <div className="py-16 text-center text-sm text-muted-foreground">Loading reports…</div>
+  if (loading) return <div className="py-16 text-center text-sm text-muted-foreground">Caricamento report…</div>
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Reports</h1>
-          <p className="text-sm text-muted-foreground">Generate a shareable SEO report for {project.domain}.</p>
+          <h1 className="text-xl font-semibold">Report</h1>
+          <p className="text-sm text-muted-foreground">Genera un report SEO condivisibile per {project.domain}.</p>
         </div>
         <Button variant="accent" onClick={generateReport} disabled={generating}>
           {generating ? <Loader2 className="size-4 animate-spin" /> : <FileText className="size-4" />}
-          Generate SEO Report
+          Genera report SEO
         </Button>
       </div>
 
       {reports.length === 0 ? (
         <EmptyState
           icon={<FileText className="size-5" />}
-          title="No reports yet"
-          description="Generate your first SEO report to capture your current score, issues, and top opportunities."
+          title="Ancora nessun report"
+          description="Genera il tuo primo report SEO per fissare il tuo punteggio attuale, i problemi e le migliori opportunità."
         />
       ) : (
         <div className="space-y-2">
@@ -244,10 +244,10 @@ export default function Reports() {
               <CardContent className="flex items-center justify-between gap-3 p-4">
                 <div>
                   <p className="text-sm font-medium text-foreground">{r.title}</p>
-                  <p className="text-xs text-muted-foreground">Generated {formatDate(r.created_at)}</p>
+                  <p className="text-xs text-muted-foreground">Generato il {formatDate(r.created_at)}</p>
                 </div>
                 <Button variant="outline" size="sm" onClick={() => exportPdf(r)}>
-                  <Download className="size-4" /> Export PDF
+                  <Download className="size-4" /> Esporta PDF
                 </Button>
               </CardContent>
             </Card>

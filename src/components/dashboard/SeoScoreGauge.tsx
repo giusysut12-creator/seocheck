@@ -1,10 +1,10 @@
 const CATEGORY_LABELS: Record<string, string> = {
-  technical_score: 'Technical SEO',
-  onpage_score: 'On-page SEO',
+  technical_score: 'SEO tecnica',
+  onpage_score: 'SEO on-page',
   performance_score: 'Performance',
-  indexability_score: 'Indexability',
-  content_score: 'Content',
-  backlinks_score: 'Backlinks',
+  indexability_score: 'Indicizzabilità',
+  content_score: 'Contenuti',
+  backlinks_score: 'Backlink',
 }
 
 function scoreColor(score: number) {

@@ -62,20 +62,20 @@ export interface ClassifiedOpportunity {
 
 export const KIND_LABELS: Record<OpportunityKind, { label: string; blurb: string }> = {
   ctr_gap: {
-    label: 'Rewrite the snippet',
-    blurb: 'Ranks well but is rarely clicked — the listing text is the bottleneck, not the position.',
+    label: 'Riscrivi lo snippet',
+    blurb: 'Si posiziona bene ma viene cliccato raramente — il testo dell\'annuncio è il collo di bottiglia, non la posizione.',
   },
   striking_distance: {
-    label: 'Within reach',
-    blurb: 'Close enough to the top that a focused push can move it into positions that earn clicks.',
+    label: 'Alla portata',
+    blurb: 'Abbastanza vicino alla vetta che una spinta mirata può portarlo in posizioni che generano clic.',
   },
   losing_ground: {
-    label: 'Losing ground',
-    blurb: 'Slipping compared with the previous period — worth defending before the loss settles in.',
+    label: 'Perdita di terreno',
+    blurb: 'In calo rispetto al periodo precedente — vale la pena difenderlo prima che la perdita si consolidi.',
   },
   cannibalization: {
-    label: 'Competing with itself',
-    blurb: 'Several of your own pages rank for this query, splitting the signals between them.',
+    label: 'In competizione con se stesso',
+    blurb: 'Diverse tue pagine si posizionano per questa query, dividendo i segnali tra loro.',
   },
 }
 
@@ -133,13 +133,13 @@ export function classifyKeyword(signal: KeywordSignal): ClassifiedOpportunity[] 
       found.push({
         kind: 'ctr_gap',
         keyword: signal.keyword,
-        headline: `Position ${signal.position.toFixed(1)} but only ${(signal.ctr * 100).toFixed(1)}% click — that position usually earns about ${(expectedCtr * 100).toFixed(0)}%.`,
+        headline: `Posizione ${signal.position.toFixed(1)} ma solo ${(signal.ctr * 100).toFixed(1)}% di clic — quella posizione normalmente ne ottiene circa ${(expectedCtr * 100).toFixed(0)}%.`,
         potentialClicks,
         score: scoreFor('ctr_gap', potentialClicks, signal.impressions),
         actions: [
-          'Rewrite the title tag so it answers this query directly',
-          'Write a meta description that gives a reason to choose this result',
-          'Check the page still matches what someone searching this wants',
+          'Riscrivi il tag title in modo che risponda direttamente a questa query',
+          'Scrivi una meta description che dia un motivo per scegliere questo risultato',
+          'Verifica che la pagina corrisponda ancora a ciò che cerca chi digita questa query',
         ],
         page,
       })
@@ -150,17 +150,17 @@ export function classifyKeyword(signal: KeywordSignal): ClassifiedOpportunity[] 
   if (signal.position >= 4 && signal.position <= 20) {
     const potentialClicks = climbClicks(signal)
     if (potentialClicks > 0) {
-      const where = signal.position <= 10 ? 'on page one' : 'on the second results page'
+      const where = signal.position <= 10 ? 'in prima pagina' : 'nella seconda pagina dei risultati'
       found.push({
         kind: 'striking_distance',
         keyword: signal.keyword,
-        headline: `Ranks ${signal.position.toFixed(1)} (${where}) with ${signal.impressions.toLocaleString()} impressions — reaching the top 3 is worth about ${potentialClicks.toLocaleString()} more clicks.`,
+        headline: `Posizionata ${signal.position.toFixed(1)} (${where}) con ${signal.impressions.toLocaleString()} impressioni — raggiungere il top 3 vale circa ${potentialClicks.toLocaleString()} clic in più.`,
         potentialClicks,
         score: scoreFor('striking_distance', potentialClicks, signal.impressions),
         actions: [
-          'Deepen the page so it covers the question more completely than the results above it',
-          'Add internal links to this page from related, well-linked pages',
-          'Make sure the title and H1 target this query rather than a broader one',
+          'Approfondisci la pagina così che copra la domanda più completamente dei risultati sopra di essa',
+          'Aggiungi link interni a questa pagina da pagine correlate e ben collegate',
+          'Assicurati che titolo e H1 puntino a questa query specifica e non a una più generica',
         ],
         page,
       })
@@ -181,14 +181,14 @@ export function classifyKeyword(signal: KeywordSignal): ClassifiedOpportunity[] 
       keyword: signal.keyword,
       headline:
         positionLost >= POSITION_DROP
-          ? `Slipped from position ${previousPosition!.toFixed(1)} to ${signal.position.toFixed(1)} since the previous period.`
-          : `Clicks fell from ${previousClicks.toLocaleString()} to ${signal.clicks.toLocaleString()} since the previous period.`,
+          ? `Scesa dalla posizione ${previousPosition!.toFixed(1)} a ${signal.position.toFixed(1)} rispetto al periodo precedente.`
+          : `I clic sono scesi da ${previousClicks.toLocaleString()} a ${signal.clicks.toLocaleString()} rispetto al periodo precedente.`,
       potentialClicks,
       score: scoreFor('losing_ground', Math.max(potentialClicks, 1), signal.impressions),
       actions: [
-        'Check whether the ranking page changed recently',
-        'Compare the page against the results now ranking above it',
-        'Confirm the page is still reachable and indexable',
+        'Verifica se la pagina posizionata è cambiata di recente',
+        'Confronta la pagina con i risultati ora posizionati sopra di essa',
+        'Conferma che la pagina sia ancora raggiungibile e indicizzabile',
       ],
       page,
     })
@@ -233,13 +233,13 @@ export function classifyCannibalization(query: CannibalizedQuery): ClassifiedOpp
   return {
     kind: 'cannibalization',
     keyword: query.keyword,
-    headline: `${query.pages.length} of your pages rank for this query, splitting ${query.totalImpressions.toLocaleString()} impressions between them.`,
+    headline: `${query.pages.length} tue pagine si posizionano per questa query, dividendo ${query.totalImpressions.toLocaleString()} impressioni tra loro.`,
     potentialClicks,
     score: scoreFor('cannibalization', Math.max(potentialClicks, 1), query.totalImpressions),
     actions: [
-      `Decide which page should own this query — currently ${primary.page} gets the most impressions`,
-      'Merge the overlapping content into that page, or make each page target a clearly different query',
-      'Point internal links for this topic at the page you chose',
+      `Decidi quale pagina dovrebbe possedere questa query — attualmente ${primary.page} ottiene più impressioni`,
+      'Unisci il contenuto sovrapposto in quella pagina, oppure rendi ogni pagina mirata a una query chiaramente diversa',
+      'Punta i link interni per questo argomento verso la pagina che hai scelto',
     ],
     page: primary.page,
   }

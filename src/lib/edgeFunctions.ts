@@ -82,7 +82,7 @@ async function readCrawlProgress(projectId: string): Promise<{ crawled: number; 
 }
 
 const NOT_DEPLOYED =
-  'Could not reach the Site Audit crawler. Deploy the "crawl-site" Edge Function to your Supabase project — Settings shows its current status.'
+  'Non è stato possibile raggiungere il crawler di controllo del sito. Distribuisci la Edge Function "crawl-site" sul tuo progetto Supabase — le Impostazioni mostrano il suo stato attuale.'
 
 function isWorkerStopped(error: unknown): boolean {
   return error instanceof FunctionsHttpError && error.context?.status === 546
@@ -108,24 +108,24 @@ async function describeInvokeError(
       // slices reads very differently from a slice that simply ran long — and
       // 546 alone says neither.
       const cost = d
-        ? ` (last slice: ${d.pages_this_slice} pages in ${(d.wall_ms / 1000).toFixed(1)}s, memory ${d.rss_start_mb ?? '?'}→${d.rss_end_mb ?? '?'} MB)`
+        ? ` (ultima fetta: ${d.pages_this_slice} pagine in ${(d.wall_ms / 1000).toFixed(1)}s, memoria ${d.rss_start_mb ?? '?'}→${d.rss_end_mb ?? '?'} MB)`
         : ''
       // Down to one page per call and still stopped means the cost is in what
       // every call does before it fetches anything, not in the crawling — a
       // different problem, and worth saying so rather than suggesting patience.
       const floor =
         pagesPerSlice <= MIN_PAGES_PER_SLICE
-          ? ' It was stopped even asking for a single page at a time, so the limit is being reached before any crawling happens.'
+          ? ' È stato fermato anche chiedendo una sola pagina alla volta, quindi il limite viene raggiunto prima che avvenga qualsiasi scansione.'
           : ''
       // Saying what survived matters: the crawl is resumable, so this is a
       // pause to pick back up rather than work to redo.
       return saved > 0
-        ? `Supabase stopped the crawler after ${saved} pages. Those pages are saved — press Rescan again to carry on from there.${floor}${cost}`
-        : `Supabase stopped the crawler before it could fetch anything.${floor} Press Rescan again; if it keeps happening, the site may be too slow to answer.${cost}`
+        ? `Supabase ha fermato il crawler dopo ${saved} pagine. Quelle pagine sono salvate — premi Rianalizza per continuare da lì.${floor}${cost}`
+        : `Supabase ha fermato il crawler prima che potesse scaricare qualcosa.${floor} Premi Rianalizza; se continua a succedere, il sito potrebbe essere troppo lento a rispondere.${cost}`
     }
     const body = await error.context?.json?.().catch(() => null)
     if (body?.error) return body.error as string
-    return `The crawler returned an error (HTTP ${status ?? 'unknown'}).`
+    return `Il crawler ha restituito un errore (HTTP ${status ?? 'unknown'}).`
   }
   return NOT_DEPLOYED
 }
@@ -196,7 +196,7 @@ export async function startCrawl(
     if (data?.error) return { data, error: data.error }
 
     last = data ?? null
-    if (!last) return { data: null, error: 'The crawler returned an empty response.' }
+    if (!last) return { data: null, error: 'Il crawler ha restituito una risposta vuota.' }
 
     // A slice that came back is proof the run is moving again.
     workerStops = 0
@@ -213,7 +213,7 @@ export async function startCrawl(
   // saved, so this is somewhere to pick up from rather than a failure.
   return {
     data: last,
-    error: `Paused after ${last?.pages_crawled ?? 0} pages so the run doesn't go on indefinitely — press Rescan to carry on.`,
+    error: `Interrotto dopo ${last?.pages_crawled ?? 0} pagine per non proseguire all'infinito — premi Rianalizza per continuare.`,
   }
 }
 

@@ -30,7 +30,7 @@ export default function Backlinks() {
         const data = await seoProvider.getBacklinks(project!.domain)
         if (!cancelled) setBacklinks(data)
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load backlinks')
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Caricamento backlink non riuscito')
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -42,7 +42,7 @@ export default function Backlinks() {
   }, [project])
 
   if (!project) return null
-  if (loading) return <div className="py-16 text-center text-sm text-muted-foreground">Loading backlinks…</div>
+  if (loading) return <div className="py-16 text-center text-sm text-muted-foreground">Caricamento backlink…</div>
 
   const referringDomains = new Set(backlinks.map((b) => b.sourceDomain)).size
   const dofollow = backlinks.filter((b) => b.linkType === 'dofollow').length
@@ -51,29 +51,29 @@ export default function Backlinks() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold">Backlinks</h1>
-        <p className="text-sm text-muted-foreground">Link profile for {project.domain}.</p>
+        <h1 className="text-xl font-semibold">Backlink</h1>
+        <p className="text-sm text-muted-foreground">Profilo dei link per {project.domain}.</p>
       </div>
 
       {configured === false ? (
-        <ProviderNotConfigured feature="backlink and referring domain data" />
+        <ProviderNotConfigured feature="i dati sui backlink e sui domini di riferimento" />
       ) : error ? (
-        <EmptyState title="Could not load backlink data" description={error} />
+        <EmptyState title="Non è stato possibile caricare i dati sui backlink" description={error} />
       ) : backlinks.length === 0 ? (
-        <EmptyState title="No backlinks found" description="Your connected provider returned no backlink data for this domain yet." />
+        <EmptyState title="Nessun backlink trovato" description="Il tuo provider connesso non ha ancora restituito dati sui backlink per questo dominio." />
       ) : (
         <>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <Card>
               <CardContent className="p-4">
                 <p className="text-2xl font-semibold text-foreground">{formatNumber(backlinks.length)}</p>
-                <p className="text-xs text-muted-foreground">Total Backlinks</p>
+                <p className="text-xs text-muted-foreground">Backlink totali</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <p className="text-2xl font-semibold text-foreground">{formatNumber(referringDomains)}</p>
-                <p className="text-xs text-muted-foreground">Referring Domains</p>
+                <p className="text-xs text-muted-foreground">Domini di riferimento</p>
               </CardContent>
             </Card>
             <Card>
@@ -113,7 +113,7 @@ export default function Backlinks() {
                 </ResponsiveContainer>
               </div>
               <p className="text-sm text-muted-foreground">
-                {dofollow} dofollow ({backlinks.length ? Math.round((dofollow / backlinks.length) * 100) : 0}%) vs {nofollow} nofollow links.
+                {dofollow} dofollow ({backlinks.length ? Math.round((dofollow / backlinks.length) * 100) : 0}%) contro {nofollow} link nofollow.
               </p>
             </CardContent>
           </Card>
@@ -121,13 +121,13 @@ export default function Backlinks() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Source URL</TableHead>
-                <TableHead>Target URL</TableHead>
+                <TableHead>URL di origine</TableHead>
+                <TableHead>URL di destinazione</TableHead>
                 <TableHead>Anchor</TableHead>
-                <TableHead>Domain Authority</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>First Seen</TableHead>
-                <TableHead>Last Seen</TableHead>
+                <TableHead>Autorità dominio</TableHead>
+                <TableHead>Tipo</TableHead>
+                <TableHead>Prima visto</TableHead>
+                <TableHead>Ultimo visto</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

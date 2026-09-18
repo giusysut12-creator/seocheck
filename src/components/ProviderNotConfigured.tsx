@@ -5,8 +5,8 @@ export function ProviderNotConfigured({ feature }: { feature: string }) {
   return (
     <EmptyState
       icon={<PlugZap className="size-5" />}
-      title="SEO data provider not connected"
-      description={`Connect an SEO data provider to unlock ${feature}. Set SEO_API_URL and SEO_API_KEY in your Supabase Edge Function secrets — see Settings for status. No estimated numbers are shown until a provider is configured.`}
+      title="Provider dati SEO non connesso"
+      description={`Connetti un provider dati SEO per sbloccare ${feature}. Imposta SEO_API_URL e SEO_API_KEY nelle variabili segrete della tua Edge Function Supabase — vedi Impostazioni per lo stato. Nessun numero stimato viene mostrato finché un provider non è configurato.`}
     />
   )
 }

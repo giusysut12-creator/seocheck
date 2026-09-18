@@ -87,7 +87,7 @@ export function NewProjectForm({ compact = false }: { compact?: boolean }) {
       </Select>
       <Button type="submit" variant="accent" disabled={submitting}>
         {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
-        Analyze
+        Analizza
       </Button>
       {error && <p className="w-full text-xs text-destructive">{error}</p>}
     </form>

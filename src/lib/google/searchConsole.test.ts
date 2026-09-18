@@ -56,26 +56,26 @@ describe('getGoogleStatus', () => {
 
   it('reports a missing deployment as an actionable message', async () => {
     invoke.mockResolvedValue({ data: null, error: { message: 'Failed to send a request' } })
-    await expect(getGoogleStatus()).rejects.toThrow(/Deploy the "google-search-console" Edge Function/)
+    await expect(getGoogleStatus()).rejects.toThrow(/Edge Function "google-search-console"/)
   })
 })
 
 describe('error translation', () => {
   it('turns a revoked grant into reconnect guidance', async () => {
     invoke.mockResolvedValue({ data: { error: 'raw', reason: 'token_expired' }, error: null })
-    await expect(listProperties()).rejects.toThrow(/expired.*connect again/i)
+    await expect(listProperties()).rejects.toThrow(/scaduta.*connettiti di nuovo/i)
   })
 
   it('explains a property the user cannot read', async () => {
     invoke.mockResolvedValue({ data: { error: 'raw', reason: 'no_property_access' }, error: null })
     await expect(selectProperty('p1', 'sc-domain:other.com')).rejects.toThrow(
-      /don't have access to this Search Console property/i,
+      /non hai accesso a questa proprietà Search Console/i,
     )
   })
 
   it('explains a quota rejection', async () => {
     invoke.mockResolvedValue({ data: { error: 'raw', reason: 'quota_exceeded' }, error: null })
-    await expect(listProperties()).rejects.toThrow(/quota exceeded/i)
+    await expect(listProperties()).rejects.toThrow(/quota api.*superata/i)
   })
 
   it('falls back to the server message for an unrecognized reason', () => {
@@ -129,7 +129,7 @@ describe('syncSearchConsole', () => {
       data: { status: 'failed', error: 'raw', reason: 'search_analytics_failed' },
       error: null,
     })
-    await expect(syncSearchConsole('project-1', '28d')).rejects.toThrow(/Search Console refused the data request/i)
+    await expect(syncSearchConsole('project-1', '28d')).rejects.toThrow(/Search Console ha rifiutato la richiesta di dati/i)
   })
 })
 

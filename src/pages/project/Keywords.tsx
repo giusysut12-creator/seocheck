@@ -27,18 +27,18 @@ import { cn, formatCurrency, formatNumber } from '@/lib/utils'
 const PAGE_SIZE = 50
 
 const SEGMENTS: { value: KeywordSegment; label: string; hint: string }[] = [
-  { value: 'all', label: 'All', hint: 'Every keyword with impressions in the period' },
-  { value: 'top3', label: 'Top 3', hint: 'Average position 1-3' },
-  { value: 'top10', label: 'Top 10', hint: 'Average position 1-10' },
-  { value: 'page2', label: 'Page 2', hint: 'Average position 11-20' },
-  { value: 'page3plus', label: 'Page 3+', hint: 'Average position 21 and beyond' },
+  { value: 'all', label: 'Tutte', hint: 'Ogni parola chiave con impressioni nel periodo' },
+  { value: 'top3', label: 'Top 3', hint: 'Posizione media 1-3' },
+  { value: 'top10', label: 'Top 10', hint: 'Posizione media 1-10' },
+  { value: 'page2', label: 'Pagina 2', hint: 'Posizione media 11-20' },
+  { value: 'page3plus', label: 'Pagina 3+', hint: 'Posizione media 21 e oltre' },
 ]
 
 const SORTS: { value: KeywordSort; label: string }[] = [
-  { value: 'clicks', label: 'Clicks' },
-  { value: 'impressions', label: 'Impressions' },
+  { value: 'clicks', label: 'Clic' },
+  { value: 'impressions', label: 'Impressioni' },
   { value: 'ctr', label: 'CTR' },
-  { value: 'position', label: 'Position' },
+  { value: 'position', label: 'Posizione' },
 ]
 
 export default function Keywords() {
@@ -111,7 +111,7 @@ export default function Keywords() {
           setAdsMetrics(new Map())
         }
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load keywords')
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Non è stato possibile caricare le parole chiave')
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -130,9 +130,9 @@ export default function Keywords() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold">Keywords</h1>
+        <h1 className="text-xl font-semibold">Parole chiave</h1>
         <p className="text-sm text-muted-foreground">
-          Queries {project.domain} actually appeared for on Google, measured by Search Console.
+          Query per cui {project.domain} è effettivamente apparso su Google, misurate da Search Console.
         </p>
       </div>
 
@@ -140,16 +140,16 @@ export default function Keywords() {
         <>
           <EmptyState
             icon={<Search className="size-5" />}
-            title="Connect Google Search Console"
-            description="See your real organic keywords, clicks, impressions and rankings — measured by Google, not estimated."
+            title="Connetti Google Search Console"
+            description="Vedi le tue vere parole chiave organiche, clic, impressioni e posizionamenti — misurati da Google, non stimati."
           />
           <GoogleConnectionCard projectId={project.id} />
         </>
       ) : !hasData && !loading ? (
         <>
           <EmptyState
-            title="No Search Console data yet"
-            description="Run a synchronization to import your keyword performance for the selected period."
+            title="Ancora nessun dato Search Console"
+            description="Avvia una sincronizzazione per importare le performance delle tue parole chiave per il periodo selezionato."
           />
           <GoogleConnectionCard projectId={project.id} />
         </>
@@ -161,7 +161,7 @@ export default function Keywords() {
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Filter keywords…"
+                placeholder="Filtra parole chiave…"
                 className="pl-9"
               />
             </div>
@@ -184,7 +184,7 @@ export default function Keywords() {
               <SelectContent>
                 {SORTS.map((s) => (
                   <SelectItem key={s.value} value={s.value}>
-                    Sort: {s.label}
+                    Ordina: {s.label}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -195,7 +195,7 @@ export default function Keywords() {
               onClick={() => { setDirection(direction === 'desc' ? 'asc' : 'desc'); setPage(0) }}
             >
               {direction === 'desc' ? <ArrowDown className="size-4" /> : <ArrowUp className="size-4" />}
-              {direction === 'desc' ? 'Descending' : 'Ascending'}
+              {direction === 'desc' ? 'Decrescente' : 'Crescente'}
             </Button>
           </div>
 
@@ -219,39 +219,38 @@ export default function Keywords() {
           </div>
 
           {error ? (
-            <EmptyState title="Could not load keywords" description={error} />
+            <EmptyState title="Non è stato possibile caricare le parole chiave" description={error} />
           ) : loading ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">Loading keywords…</div>
+            <div className="py-10 text-center text-sm text-muted-foreground">Caricamento parole chiave…</div>
           ) : rows.length === 0 ? (
-            <EmptyState title="No keywords match" description="Try a different segment, period, or search term." />
+            <EmptyState title="Nessuna parola chiave corrisponde" description="Prova un segmento, periodo o termine di ricerca diverso." />
           ) : (
             <>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Keyword</TableHead>
-                    <TableHead>Clicks</TableHead>
-                    <TableHead>Impressions</TableHead>
+                    <TableHead>Parola chiave</TableHead>
+                    <TableHead>Clic</TableHead>
+                    <TableHead>Impressioni</TableHead>
                     <TableHead>CTR</TableHead>
                     <TableHead>
                       <Tooltip>
                         <TooltipTrigger className="cursor-help underline decoration-dotted underline-offset-2">
-                          Avg. Position
+                          Posizione media
                         </TooltipTrigger>
                         <TooltipContent>
-                          Impression-weighted average position over the period — not a live absolute ranking.
+                          Posizione media ponderata per le impressioni nel periodo — non un posizionamento assoluto in tempo reale.
                         </TooltipContent>
                       </Tooltip>
                     </TableHead>
-                    <TableHead>Trend</TableHead>
+                    <TableHead>Tendenza</TableHead>
                     <TableHead>
                       <Tooltip>
                         <TooltipTrigger className="cursor-help underline decoration-dotted underline-offset-2">
-                          Opportunity
+                          Opportunità
                         </TooltipTrigger>
                         <TooltipContent>
-                          What this keyword needs, and the clicks it would be worth. Blank means it is performing as
-                          expected for its position.
+                          Cosa serve a questa parola chiave, e i clic che varrebbe. Vuoto significa che sta già performando come previsto per la sua posizione.
                         </TooltipContent>
                       </Tooltip>
                     </TableHead>
@@ -261,12 +260,12 @@ export default function Keywords() {
                           Volume
                         </TooltipTrigger>
                         <TooltipContent>
-                          Monthly searches from Google Ads — a different measurement from Search Console impressions.
+                          Ricerche mensili da Google Ads — una misurazione diversa dalle impressioni di Search Console.
                         </TooltipContent>
                       </Tooltip>
                     </TableHead>
                     <TableHead>CPC</TableHead>
-                    <TableHead>Ranking Page</TableHead>
+                    <TableHead>Pagina posizionata</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -298,11 +297,11 @@ export default function Keywords() {
 
               <div className="flex items-center justify-between text-sm text-muted-foreground">
                 <span>
-                  {formatNumber(total)} keyword{total === 1 ? '' : 's'} · page {page + 1} of {totalPages}
+                  {formatNumber(total)} parola/e chiave · pagina {page + 1} di {totalPages}
                 </span>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
-                    <ChevronLeft className="size-4" /> Previous
+                    <ChevronLeft className="size-4" /> Precedente
                   </Button>
                   <Button
                     variant="outline"
@@ -310,7 +309,7 @@ export default function Keywords() {
                     disabled={page + 1 >= totalPages}
                     onClick={() => setPage((p) => p + 1)}
                   >
-                    Next <ChevronRight className="size-4" />
+                    Successiva <ChevronRight className="size-4" />
                   </Button>
                 </div>
               </div>
@@ -328,25 +327,25 @@ export default function Keywords() {
                         const result = await enrichKeywords(project.id, rows.map((r) => r.keyword))
                         setEnrichMessage(
                           result.enriched > 0
-                            ? `Enriched ${result.enriched} keyword${result.enriched === 1 ? '' : 's'} with Google Ads data.`
-                            : 'All these keywords already have recent Google Ads data.',
+                            ? `Arricchite ${result.enriched} parola/e chiave con dati Google Ads.`
+                            : 'Tutte queste parole chiave hanno già dati Google Ads recenti.',
                         )
                         setReloadToken((t) => t + 1)
                       } catch (err) {
-                        setEnrichMessage(err instanceof Error ? err.message : 'Enrichment failed')
+                        setEnrichMessage(err instanceof Error ? err.message : 'Arricchimento non riuscito')
                       } finally {
                         setEnriching(false)
                       }
                     }}
                   >
                     {enriching ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-                    Enrich with Google Ads
+                    Arricchisci con Google Ads
                   </Button>
                   {enrichMessage && <span className="text-xs text-muted-foreground">{enrichMessage}</span>}
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  Connect Google Ads to enrich these keywords with search volume and CPC.
+                  Connetti Google Ads per arricchire queste parole chiave con volume di ricerca e CPC.
                 </p>
               )}
             </>
@@ -393,14 +392,14 @@ function PositionTrend({ change }: { change: number | null }) {
   if (change === null) {
     return (
       <span className="flex items-center gap-1 text-xs text-muted-foreground">
-        <Minus className="size-3" /> new
+        <Minus className="size-3" /> nuova
       </span>
     )
   }
   if (Math.abs(change) < 0.1) {
     return (
       <span className="flex items-center gap-1 text-xs text-muted-foreground">
-        <Minus className="size-3" /> stable
+        <Minus className="size-3" /> stabile
       </span>
     )
   }

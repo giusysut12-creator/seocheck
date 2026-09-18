@@ -15,14 +15,14 @@ export interface AdsStatus {
 }
 
 const REASON_MESSAGES: Record<string, string> = {
-  not_connected: 'Connect your Google account first.',
-  token_expired: 'Your Google connection expired. Please connect again.',
-  quota_exceeded: 'Google Ads quota exceeded. Please try again later.',
-  developer_token_error: 'The Google Ads developer token was rejected. Check that it is approved for API access.',
-  invalid_customer_id: 'This Google account cannot access the configured Google Ads customer ID.',
-  api_version: 'The configured Google Ads API version is no longer accepted. Set GOOGLE_ADS_API_VERSION.',
-  storage_failed: 'The metrics were fetched but could not be saved.',
-  unexpected: 'Something went wrong talking to Google Ads.',
+  not_connected: 'Connetti prima il tuo account Google.',
+  token_expired: 'La connessione Google è scaduta. Connettiti di nuovo.',
+  quota_exceeded: 'Quota Google Ads superata. Riprova più tardi.',
+  developer_token_error: "Il developer token di Google Ads è stato rifiutato. Verifica che sia approvato per l'accesso API.",
+  invalid_customer_id: 'Questo account Google non può accedere al customer ID Google Ads configurato.',
+  api_version: 'La versione dell\'API Google Ads configurata non è più accettata. Imposta GOOGLE_ADS_API_VERSION.',
+  storage_failed: 'Le metriche sono state scaricate ma non è stato possibile salvarle.',
+  unexpected: 'Qualcosa è andato storto durante la comunicazione con Google Ads.',
 }
 
 interface RawResponse {
@@ -41,7 +41,7 @@ async function call(action: string, payload: Record<string, unknown> = {}): Prom
   })
   if (error) {
     throw new Error(
-      'Could not reach the Google Ads integration. Deploy the "google-ads" Edge Function to your Supabase project.',
+      'Non è stato possibile raggiungere l\'integrazione Google Ads. Distribuisci la Edge Function "google-ads" sul tuo progetto Supabase.',
     )
   }
   if (data?.error) throw new Error(REASON_MESSAGES[data.reason ?? ''] ?? data.error)

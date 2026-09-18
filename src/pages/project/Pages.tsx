@@ -95,15 +95,15 @@ export default function Pages() {
   }, [id, range])
 
   if (!project) return null
-  if (loading) return <div className="py-16 text-center text-sm text-muted-foreground">Loading pages…</div>
+  if (loading) return <div className="py-16 text-center text-sm text-muted-foreground">Caricamento pagine…</div>
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Pages</h1>
+          <h1 className="text-xl font-semibold">Pagine</h1>
           <p className="text-sm text-muted-foreground">
-            Crawler findings joined with Search Console performance for {project.domain}.
+            Risultati del crawler uniti alle performance di Search Console per {project.domain}.
           </p>
         </div>
         <Select value={range} onValueChange={(v) => setRange(v as SyncRange)}>
@@ -123,27 +123,27 @@ export default function Pages() {
       {merged.length === 0 ? (
         <EmptyState
           icon={<FileText className="size-5" />}
-          title="No pages yet"
-          description="Run a Site Audit to crawl your pages, and sync Search Console to see how they perform in search."
+          title="Ancora nessuna pagina"
+          description="Avvia un controllo del sito per scansionare le tue pagine, e sincronizza Search Console per vedere come performano nella ricerca."
         />
       ) : (
         <>
           {!hasOrganic && (
             <p className="text-xs text-muted-foreground">
-              Showing crawler data only. Connect and sync Google Search Console to see clicks, impressions and
-              positions for each page.
+              Mostro solo i dati del crawler. Connetti e sincronizza Google Search Console per vedere clic,
+              impressioni e posizioni per ogni pagina.
             </p>
           )}
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>URL</TableHead>
-                <TableHead>Clicks</TableHead>
-                <TableHead>Impressions</TableHead>
+                <TableHead>Clic</TableHead>
+                <TableHead>Impressioni</TableHead>
                 <TableHead>CTR</TableHead>
-                <TableHead>Avg. Position</TableHead>
-                <TableHead>Keywords</TableHead>
-                <TableHead>Technical</TableHead>
+                <TableHead>Posizione media</TableHead>
+                <TableHead>Parole chiave</TableHead>
+                <TableHead>Tecnica</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -165,17 +165,17 @@ export default function Pages() {
                       {!row.crawled ? (
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <Badge variant="outline">not crawled</Badge>
+                            <Badge variant="outline">non scansionata</Badge>
                           </TooltipTrigger>
                           <TooltipContent>
-                            Search Console reports traffic for this URL, but the crawler has not reached it.
+                            Search Console riporta traffico per questo URL, ma il crawler non l'ha ancora raggiunto.
                           </TooltipContent>
                         </Tooltip>
                       ) : issues === 0 ? (
-                        <Badge variant="success">no issues</Badge>
+                        <Badge variant="success">nessun problema</Badge>
                       ) : (
                         <Badge variant="warning">
-                          {issues} issue{issues === 1 ? '' : 's'}
+                          {issues} problema/i
                         </Badge>
                       )}
                     </TableCell>

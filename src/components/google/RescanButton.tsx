@@ -37,11 +37,11 @@ export function RescanButton({
     setProgress(null)
     let slowNote = ''
     const { data: crawl, error: crawlError } = await startCrawl(projectId, (p) => {
-      setProgress(p.pending > 0 ? `${p.crawled} of ${p.total} pages` : `${p.crawled} pages`)
+      setProgress(p.pending > 0 ? `${p.crawled} di ${p.total} pagine` : `${p.crawled} pagine`)
       // Worth explaining: a site asking for a pause between requests makes
       // the crawl legitimately slow, and that is not a fault to hide.
       if (p.crawlDelaySeconds > 0) {
-        slowNote = ` Your robots.txt asks crawlers to wait ${p.crawlDelaySeconds}s between requests, so this takes a while.`
+        slowNote = ` Il tuo robots.txt chiede ai crawler di attendere ${p.crawlDelaySeconds}s tra le richieste, quindi ci vorrà un po'.`
       }
     })
     if (crawlError) {
@@ -52,23 +52,23 @@ export function RescanButton({
       return
     }
 
-    const coverage = `Crawled ${crawl?.pages_crawled ?? 0} pages.${slowNote}`
+    const coverage = `Scansionate ${crawl?.pages_crawled ?? 0} pagine.${slowNote}`
 
     let syncedNote = ''
     if (syncSearchConsoleToo) {
       setPhase('syncing')
       try {
         await syncSearchConsole(projectId, range)
-        syncedNote = ' Search Console data refreshed too, though Google needs a few days to reflect changes you just made.'
+        syncedNote = ' Anche i dati di Search Console sono stati aggiornati, anche se Google richiede alcuni giorni per riflettere le modifiche appena fatte.'
       } catch (err) {
         // A failed sync does not invalidate the crawl that already succeeded.
-        syncedNote = ` Search Console could not be refreshed: ${err instanceof Error ? err.message : 'unknown error'}`
+        syncedNote = ` Non è stato possibile aggiornare Search Console: ${err instanceof Error ? err.message : 'errore sconosciuto'}`
       }
     }
 
     setPhase('idle')
     setProgress(null)
-    setResult(`${coverage} On-page changes are reflected below.${syncedNote}`)
+    setResult(`${coverage} Le modifiche on-page sono riportate qui sotto.${syncedNote}`)
     onDone()
   }
 
@@ -80,17 +80,17 @@ export function RescanButton({
         {busy ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
         {phase === 'crawling'
           ? progress
-            ? `Re-crawling ${progress}…`
-            : 'Re-crawling…'
+            ? `Nuova scansione ${progress}…`
+            : 'Nuova scansione…'
           : phase === 'syncing'
-            ? 'Refreshing Search Console…'
-            : 'Rescan'}
+            ? 'Aggiornamento Search Console…'
+            : 'Rianalizza'}
       </Button>
       {result && <p className="max-w-md text-right text-xs text-success">{result}</p>}
       {error && (
         <div className="max-w-md text-right">
           <p className="text-xs text-destructive">{error}</p>
-          {progress && <p className="text-xs text-muted-foreground">Reached {progress} before stopping.</p>}
+          {progress && <p className="text-xs text-muted-foreground">Raggiunte {progress} prima di fermarsi.</p>}
         </div>
       )}
     </div>

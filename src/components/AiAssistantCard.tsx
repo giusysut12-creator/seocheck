@@ -12,10 +12,10 @@ interface Message {
 }
 
 const SUGGESTIONS = [
-  'Which 10 keywords have the most potential right now?',
-  'Which pages should I optimize first?',
-  'Why might traffic have changed recently?',
-  'What content should I create next?',
+  'Quali 10 parole chiave hanno più potenziale in questo momento?',
+  'Quali pagine dovrei ottimizzare per prime?',
+  'Perché il traffico potrebbe essere cambiato di recente?',
+  'Quali contenuti dovrei creare adesso?',
 ]
 
 export function AiAssistantCard({ projectId }: { projectId: string }) {
@@ -33,23 +33,23 @@ export function AiAssistantCard({ projectId }: { projectId: string }) {
     setConfigured(isConfigured)
     setSending(false)
     if (!isConfigured) return
-    setMessages((prev) => [...prev, { role: 'assistant', text: error ? `Error: ${error}` : answer ?? '' }])
+    setMessages((prev) => [...prev, { role: 'assistant', text: error ? `Errore: ${error}` : answer ?? '' }])
   }
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-foreground">
-          <Bot className="size-4" /> AI SEO Assistant
+          <Bot className="size-4" /> Assistente SEO AI
         </CardTitle>
-        <CardDescription>Ask about your project — answers are grounded only in your project's real data.</CardDescription>
+        <CardDescription>Fai domande sul tuo progetto — le risposte si basano solo sui dati reali del progetto.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {configured === false ? (
           <EmptyState
             icon={<PlugZap className="size-5" />}
-            title="AI assistant not configured"
-            description="Set the AI_API_KEY secret on your Supabase Edge Functions to enable the AI SEO Assistant."
+            title="Assistente AI non configurato"
+            description="Imposta la variabile segreta AI_API_KEY sulle tue Edge Functions Supabase per attivare l'Assistente SEO AI."
           />
         ) : (
           <>
@@ -78,7 +78,7 @@ export function AiAssistantCard({ projectId }: { projectId: string }) {
                 ))}
                 {sending && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Loader2 className="size-3.5 animate-spin" /> Thinking…
+                    <Loader2 className="size-3.5 animate-spin" /> Sto pensando…
                   </div>
                 )}
               </div>
@@ -90,7 +90,7 @@ export function AiAssistantCard({ projectId }: { projectId: string }) {
                 send(input)
               }}
             >
-              <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask about your SEO performance…" />
+              <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Fai una domanda sulle performance SEO…" />
               <Button type="submit" variant="accent" size="icon" disabled={sending}>
                 <Send className="size-4" />
               </Button>

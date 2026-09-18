@@ -13,13 +13,23 @@ import { EmptyState } from '@/components/EmptyState'
 import { cn } from '@/lib/utils'
 
 const PRIORITY_STYLES: Record<IssuePriority, { badge: 'destructive' | 'warning' | 'default'; label: string }> = {
-  critical: { badge: 'destructive', label: 'Critical' },
-  high: { badge: 'warning', label: 'High' },
-  medium: { badge: 'default', label: 'Medium' },
-  low: { badge: 'default', label: 'Low' },
+  critical: { badge: 'destructive', label: 'Critico' },
+  high: { badge: 'warning', label: 'Alto' },
+  medium: { badge: 'default', label: 'Medio' },
+  low: { badge: 'default', label: 'Basso' },
 }
 
 const PRIORITY_ORDER: IssuePriority[] = ['critical', 'high', 'medium', 'low']
+
+/** The category slug is stored as-is in the database; only its display changes. */
+const CATEGORY_LABELS: Record<string, string> = {
+  onpage: 'On-page',
+  content: 'Contenuti',
+  indexability: 'Indicizzabilità',
+  technical: 'Tecnica',
+  performance: 'Performance',
+  internal_linking: 'Link interni',
+}
 
 export default function SiteAudit() {
   const { project, id } = useCurrentProject()
@@ -81,23 +91,23 @@ export default function SiteAudit() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Site Audit</h1>
-          <p className="text-sm text-muted-foreground">Technical &amp; on-page SEO issues found on {project.domain}.</p>
+          <h1 className="text-xl font-semibold">Controllo del sito</h1>
+          <p className="text-sm text-muted-foreground">Problemi SEO tecnici e on-page trovati su {project.domain}.</p>
         </div>
         <Button variant="accent" onClick={handleRunAudit} disabled={running || isCrawling}>
           {running || isCrawling ? <Loader2 className="size-4 animate-spin" /> : <ScanSearch className="size-4" />}
-          {isCrawling ? 'Crawling…' : 'Run New Audit'}
+          {isCrawling ? 'Scansione in corso…' : 'Avvia nuovo controllo'}
         </Button>
       </div>
 
       {!audit && (
         <EmptyState
           icon={<ScanSearch className="size-5" />}
-          title="No audit yet"
-          description="Run a Site Audit to crawl your website and surface prioritized SEO issues."
+          title="Ancora nessun controllo"
+          description="Avvia un controllo del sito per scansionare il tuo sito web e individuare i problemi SEO in ordine di priorità."
           action={
             <Button variant="accent" onClick={handleRunAudit} disabled={running}>
-              Run Site Audit
+              Avvia controllo del sito
             </Button>
           }
         />
@@ -125,9 +135,9 @@ export default function SiteAudit() {
           </div>
 
           {loadingIssues ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">Loading issues…</div>
+            <div className="py-10 text-center text-sm text-muted-foreground">Caricamento dei problemi…</div>
           ) : sorted.length === 0 ? (
-            <EmptyState title="No issues found" description="Great job — no issues matched this filter." />
+            <EmptyState title="Nessun problema trovato" description="Ottimo lavoro — nessun problema corrisponde a questo filtro." />
           ) : (
             <div className="space-y-2">
               {sorted.map((issue) => {
@@ -141,8 +151,8 @@ export default function SiteAudit() {
                           <p className="truncate text-sm font-medium text-foreground">{issue.title}</p>
                           <p className="truncate text-xs text-muted-foreground">{issue.description}</p>
                         </div>
-                        <Badge variant="outline" className="capitalize">
-                          {issue.category}
+                        <Badge variant="outline">
+                          {CATEGORY_LABELS[issue.category] ?? issue.category}
                         </Badge>
                         <ChevronDown className={cn('size-4 shrink-0 text-muted-foreground transition-transform', isOpen && 'rotate-180')} />
                       </CardContent>
@@ -151,17 +161,17 @@ export default function SiteAudit() {
                       <CardContent className="grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
                         <div className="space-y-3">
                           <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Why it matters</p>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Perché è importante</p>
                             <p className="mt-1 text-sm text-foreground">{issue.why_it_matters}</p>
                           </div>
                           <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">How to fix it</p>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Come risolverlo</p>
                             <p className="mt-1 text-sm text-foreground">{issue.how_to_fix}</p>
                           </div>
                         </div>
                         <div>
                           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                            Affected URLs ({issue.affected_count})
+                            URL interessati ({issue.affected_count})
                           </p>
                           <ul className="mt-1 max-h-40 space-y-1 overflow-y-auto text-xs">
                             {issue.affected_urls.map((url) => (
@@ -184,7 +194,7 @@ export default function SiteAudit() {
       )}
 
       {audit?.status === 'failed' && (
-        <EmptyState title="Last audit failed" description={audit.error_message ?? 'The domain could not be crawled.'} />
+        <EmptyState title="Ultimo controllo non riuscito" description={audit.error_message ?? 'Non è stato possibile scansionare il dominio.'} />
       )}
     </div>
   )

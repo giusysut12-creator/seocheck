@@ -75,7 +75,7 @@ export function Sidebar() {
           }
         >
           <Settings className="size-4" />
-          Settings
+          Impostazioni
         </NavLink>
       </div>
     </aside>

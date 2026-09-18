@@ -38,7 +38,7 @@ export function MetricCard({ label, value, change, sparkline, tooltip, suffix }:
             </div>
             {change !== undefined && change !== null && (
               <div className={cn('text-xs font-medium', isPositive ? 'text-success' : 'text-destructive')}>
-                {formatPercent(change)} <span className="font-normal text-muted-foreground">vs previous period</span>
+                {formatPercent(change)} <span className="font-normal text-muted-foreground">rispetto al periodo precedente</span>
               </div>
             )}
           </div>

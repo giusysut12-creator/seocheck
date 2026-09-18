@@ -8,7 +8,7 @@ export function ProtectedRoute() {
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background text-sm text-muted-foreground">
-        Loading…
+        Caricamento…
       </div>
     )
   }

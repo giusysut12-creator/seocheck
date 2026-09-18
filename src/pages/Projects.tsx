@@ -15,13 +15,13 @@ export default function Projects() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold">Projects</h1>
-        <p className="text-sm text-muted-foreground">Analyze a domain to create a new project.</p>
+        <h1 className="text-xl font-semibold">Progetti</h1>
+        <p className="text-sm text-muted-foreground">Analizza un dominio per creare un nuovo progetto.</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-foreground">Analyze a website</CardTitle>
+          <CardTitle className="text-foreground">Analizza un sito web</CardTitle>
         </CardHeader>
         <CardContent>
           <NewProjectForm />
@@ -29,12 +29,12 @@ export default function Projects() {
       </Card>
 
       {loading ? (
-        <div className="py-10 text-center text-sm text-muted-foreground">Loading projects…</div>
+        <div className="py-10 text-center text-sm text-muted-foreground">Caricamento progetti…</div>
       ) : projects.length === 0 ? (
         <EmptyState
           icon={<Globe className="size-5" />}
-          title="Add your first website"
-          description="Enter a domain above and click Analyze to create your first project and start the SEO audit."
+          title="Aggiungi il tuo primo sito web"
+          description="Inserisci un dominio qui sopra e clicca su Analizza per creare il tuo primo progetto e avviare il controllo SEO."
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -49,7 +49,7 @@ export default function Projects() {
                 <div className="min-w-0">
                   <CardTitle className="truncate text-base font-semibold text-foreground">{project.domain}</CardTitle>
                   <p className="text-xs text-muted-foreground">
-                    {project.country} · {project.device} · created {formatDate(project.created_at)}
+                    {project.country} · {project.device} · creato il {formatDate(project.created_at)}
                   </p>
                 </div>
                 <DropdownMenu>
@@ -63,19 +63,19 @@ export default function Projects() {
                       className="text-destructive"
                       onClick={(e) => {
                         e.stopPropagation()
-                        if (confirm(`Delete project ${project.domain}? This removes all its data.`)) {
+                        if (confirm(`Eliminare il progetto ${project.domain}? Questo rimuove tutti i suoi dati.`)) {
                           deleteProject(project.id)
                         }
                       }}
                     >
-                      <Trash2 className="size-4" /> Delete project
+                      <Trash2 className="size-4" /> Elimina progetto
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </CardHeader>
               <CardContent>
                 <Link to={`/projects/${project.id}`} className="relative z-10 text-xs font-medium text-accent hover:underline">
-                  Open dashboard →
+                  Apri dashboard →
                 </Link>
               </CardContent>
             </Card>

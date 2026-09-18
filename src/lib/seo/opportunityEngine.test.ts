@@ -137,7 +137,7 @@ describe('recommendActions', () => {
       internalLinksCount: 10,
       imagesMissingAlt: 0,
     }
-    expect(recommendActions(input, page).some((a) => a.includes('title tag'))).toBe(true)
+    expect(recommendActions(input, page).some((a) => a.includes('tag title'))).toBe(true)
   })
 
   it('cites the measured word count when content is thin', () => {
@@ -149,7 +149,7 @@ describe('recommendActions', () => {
       internalLinksCount: 10,
       imagesMissingAlt: 0,
     }
-    expect(recommendActions(input, page).some((a) => a.includes('620 words'))).toBe(true)
+    expect(recommendActions(input, page).some((a) => a.includes('620 parole'))).toBe(true)
   })
 
   it('still returns guidance when no crawl data exists for the page', () => {

@@ -95,8 +95,8 @@ describe('startCrawl', () => {
     const { data, error } = await run()
 
     expect(data?.pages_crawled).toBe(17)
-    expect(error).toContain('17 pages')
-    expect(error).toContain('Rescan again')
+    expect(error).toContain('17 pagine')
+    expect(error).toContain('Rianalizza')
   })
 
   it('asks for less work after each stop, down to one page at a time', async () => {
@@ -120,7 +120,7 @@ describe('startCrawl', () => {
 
     const { error } = await run()
 
-    expect(error).toContain('single page at a time')
+    expect(error).toContain('una sola pagina alla volta')
   })
 
   it('reports a missing deployment rather than a crawl failure', async () => {
@@ -128,6 +128,6 @@ describe('startCrawl', () => {
 
     const { error } = await run()
 
-    expect(error).toContain('Deploy the "crawl-site" Edge Function')
+    expect(error).toContain('Edge Function "crawl-site"')
   })
 })

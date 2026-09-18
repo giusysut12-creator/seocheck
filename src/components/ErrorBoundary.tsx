@@ -23,12 +23,12 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
       return (
         <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background px-4 text-center">
           <AlertTriangle className="size-8 text-destructive" />
-          <h1 className="text-lg font-semibold">Something went wrong</h1>
+          <h1 className="text-lg font-semibold">Qualcosa è andato storto</h1>
           <p className="max-w-sm text-sm text-muted-foreground">
-            An unexpected error occurred. Try reloading the page — if the problem persists, contact support.
+            Si è verificato un errore imprevisto. Prova a ricaricare la pagina — se il problema persiste, contatta l'assistenza.
           </p>
           <Button variant="accent" onClick={() => window.location.reload()}>
-            Reload
+            Ricarica
           </Button>
         </div>
       )
