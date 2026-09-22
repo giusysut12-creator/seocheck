@@ -314,6 +314,7 @@ function OpportunityList({
                 headline={o.headline}
                 actions={o.actions}
                 page={o.page}
+                competingPages={o.competingPages}
               />
 
               {page ? (

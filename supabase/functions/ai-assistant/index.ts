@@ -39,6 +39,13 @@ const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
 const AI_API_KEY = Deno.env.get('AI_API_KEY')
 const AI_MODEL = Deno.env.get('AI_MODEL') || 'claude-sonnet-4-5'
 
+interface CompetingPage {
+  page: string
+  impressions: number
+  clicks: number
+  position: number | null
+}
+
 interface RequestBody {
   action?: string
   project_id?: string
@@ -49,6 +56,8 @@ interface RequestBody {
   headline?: string
   actions?: string[]
   page_url?: string | null
+  /** Only for kind: 'cannibalization' — every page competing for the keyword. */
+  competing_pages?: CompetingPage[]
 }
 
 async function callClaude(systemPrompt: string, userMessage: string, tools?: unknown[], toolChoice?: unknown) {
@@ -146,7 +155,14 @@ async function handleSuggestFix(
   db: ReturnType<typeof createClient>,
   projectId: string,
   project: { domain: string; country: string },
-  input: { keyword: string; kind: string; headline: string; actions: string[]; pageUrl: string | null },
+  input: {
+    keyword: string
+    kind: string
+    headline: string
+    actions: string[]
+    pageUrl: string | null
+    competingPages: CompetingPage[]
+  },
 ) {
   let pageFacts: PageFacts | null = null
   if (input.pageUrl) {
@@ -157,6 +173,20 @@ async function handleSuggestFix(
       .eq('url', input.pageUrl)
       .maybeSingle()
     pageFacts = (data as unknown as PageFacts | null) ?? null
+  }
+
+  // The whole point of a cannibalization fix is telling the pages apart —
+  // without their titles the model has nothing to differentiate them by
+  // and, having only the primary page's facts, ends up writing the same
+  // rewrite it would for a plain CTR opportunity on that same page.
+  let competingPageFacts: { url: string; impressions: number; title: string | null }[] = []
+  if (input.competingPages.length > 1) {
+    const urls = input.competingPages.map((p) => p.page).slice(0, 6)
+    const { data } = await db.from('pages').select('url, title').eq('project_id', projectId).in('url', urls)
+    const titleByUrl = new Map(((data as { url: string; title: string | null }[] | null) ?? []).map((p) => [p.url, p.title]))
+    competingPageFacts = input.competingPages
+      .slice(0, 6)
+      .map((p) => ({ url: p.page, impressions: p.impressions, title: titleByUrl.get(p.page) ?? null }))
   }
 
   const context = {
@@ -173,6 +203,7 @@ async function handleSuggestFix(
       : input.pageUrl
         ? `No crawled data yet for ${input.pageUrl} — run a Site Audit so its current title/meta/H1 are known before rewriting them.`
         : 'This opportunity is not tied to one specific page.',
+    competing_pages: competingPageFacts.length > 0 ? competingPageFacts : undefined,
   }
 
   const systemPrompt =
@@ -185,13 +216,18 @@ async function handleSuggestFix(
     'Otherwise write a title of roughly 50-60 characters and a meta description of roughly 120-155 characters, ' +
     'building on the real current_title/current_meta_description/current_h1 rather than starting from nothing, ' +
     'and keep the keyword near the front of the title. ' +
-    'For a "cannibalization" opportunity: several of the project\'s own pages compete for this keyword. Use notes ' +
-    'to say which page should stay primary and what to do with the others (merge, redirect, or re-target to a ' +
-    'different query) — only propose a title/meta_description for the primary page, and only if you are confident ' +
-    'it stays accurate to that page\'s real content. ' +
+    'For a "cannibalization" opportunity, do NOT write the same generic snippet rewrite you would for a plain CTR ' +
+    "opportunity on that page — that ignores the actual problem. competing_pages lists every one of the project's " +
+    'own pages ranking for this keyword, each with its current title where known. Use notes to name the specific ' +
+    'competing URLs, say which one should stay primary for this keyword and why (usually the one with the most ' +
+    'impressions, unless its content clearly fits worse), and what to do with each of the others by name — merge ' +
+    'its content into the primary page, redirect it, or point it at a different, more specific query the two ' +
+    'titles suggest it could own instead. Only propose a title/meta_description for the primary page, and only if ' +
+    "the differentiation you describe in notes actually changes it from that page's current title — otherwise " +
+    'leave title/meta_description out and let notes carry the fix. ' +
     'For a "losing_ground" opportunity, notes should point at what likely changed rather than assume a rewrite ' +
     'fixes it; only include a title/meta_description if the existing ones look like the actual cause. ' +
-    "Keep notes to one or two sentences.\n\n" +
+    "Keep notes to two or three sentences, specific enough that someone could act on them without re-reading the data.\n\n" +
     `OPPORTUNITY DATA:\n${JSON.stringify(context, null, 2)}`
 
   const tools = [
@@ -267,6 +303,7 @@ Deno.serve(async (req) => {
         headline: body.headline,
         actions: body.actions ?? [],
         pageUrl: body.page_url ?? null,
+        competingPages: body.competing_pages ?? [],
       })
     }
 

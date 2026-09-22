@@ -19,6 +19,7 @@ export function AiFixSuggestion({
   headline,
   actions,
   page,
+  competingPages,
 }: {
   projectId: string
   keyword: string
@@ -26,6 +27,8 @@ export function AiFixSuggestion({
   headline: string
   actions: string[]
   page: string | null
+  /** For 'cannibalization': every page competing for the keyword. */
+  competingPages?: { page: string; impressions: number; clicks: number; position: number | null }[]
 }) {
   const [state, setState] = React.useState<'idle' | 'loading' | 'done' | 'unconfigured' | 'error'>('idle')
   const [fix, setFix] = React.useState<SuggestedFix | null>(null)
@@ -34,7 +37,7 @@ export function AiFixSuggestion({
   async function generate() {
     setState('loading')
     setError(null)
-    const result = await suggestFix(projectId, { keyword, kind, headline, actions, page })
+    const result = await suggestFix(projectId, { keyword, kind, headline, actions, page, competingPages })
     if (!result.configured) {
       setState('unconfigured')
       return

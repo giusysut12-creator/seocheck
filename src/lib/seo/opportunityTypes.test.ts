@@ -151,6 +151,12 @@ describe('classifyCannibalization', () => {
     expect(result!.kind).toBe('cannibalization')
     expect(result!.actions[0]).toContain('/giochi-da-tavolo')
     expect(result!.headline).toContain('2')
+    // Without every competing page and its own facts, a downstream fix
+    // generator has nothing to tell this apart from a single-page rewrite.
+    expect(result!.competingPages).toEqual([
+      { page: '/giochi-da-tavolo', impressions: 2000, clicks: 100, position: 6 },
+      { page: '/blog/giochi-da-tavolo-2024', impressions: 1000, clicks: 10, position: 14 },
+    ])
   })
 
   it('reports the clicks the weaker pages are failing to convert', () => {

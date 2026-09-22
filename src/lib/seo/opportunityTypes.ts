@@ -58,6 +58,13 @@ export interface ClassifiedOpportunity {
   score: number
   actions: string[]
   page: string | null
+  /**
+   * Set only for `cannibalization`: every page competing for the keyword,
+   * `page` included. What makes this kind different from a simple rewrite —
+   * without it, a consumer has no way to tell "rewrite this page's snippet"
+   * apart from "these five pages are splitting the same query".
+   */
+  competingPages?: { page: string; impressions: number; clicks: number; position: number | null }[]
 }
 
 export const KIND_LABELS: Record<OpportunityKind, { label: string; blurb: string }> = {
@@ -242,5 +249,6 @@ export function classifyCannibalization(query: CannibalizedQuery): ClassifiedOpp
       'Punta i link interni per questo argomento verso la pagina che hai scelto',
     ],
     page: primary.page,
+    competingPages: ranked,
   }
 }

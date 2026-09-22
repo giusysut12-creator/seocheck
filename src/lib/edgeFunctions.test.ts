@@ -190,6 +190,22 @@ describe('suggestFix', () => {
     expect(await suggestFix('p1', opportunity)).toEqual({ configured: false, fix: null, error: null })
   })
 
+  it('forwards every competing page for a cannibalization fix, not just the primary one', async () => {
+    // Without the full list, the AI has nothing to tell this opportunity
+    // apart from a plain single-page rewrite on the same URL.
+    invoke.mockResolvedValue({ data: { configured: true, fix: { notes: 'n' } }, error: null })
+    const competingPages = [
+      { page: 'https://x/a', impressions: 500, clicks: 50, position: 3 },
+      { page: 'https://x/b', impressions: 200, clicks: 5, position: 12 },
+    ]
+
+    await suggestFix('p1', { ...opportunity, kind: 'cannibalization', competingPages })
+
+    expect(invoke).toHaveBeenCalledWith('ai-assistant', {
+      body: expect.objectContaining({ competing_pages: competingPages }),
+    })
+  })
+
   it('surfaces a server-side failure without pretending a fix was returned', async () => {
     invoke.mockResolvedValue({ data: { configured: true, error: 'AI provider error: 529' }, error: null })
 

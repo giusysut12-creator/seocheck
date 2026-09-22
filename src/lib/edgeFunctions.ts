@@ -268,7 +268,15 @@ interface SuggestFixResponse {
  */
 export async function suggestFix(
   projectId: string,
-  opportunity: { keyword: string; kind: string; headline: string; actions: string[]; page: string | null },
+  opportunity: {
+    keyword: string
+    kind: string
+    headline: string
+    actions: string[]
+    page: string | null
+    /** For 'cannibalization': every competing page, so the fix is a real decision, not a copy of a CTR rewrite. */
+    competingPages?: { page: string; impressions: number; clicks: number; position: number | null }[]
+  },
 ): Promise<{ configured: boolean; fix: SuggestedFix | null; error: string | null }> {
   const { data, error } = await supabase.functions.invoke<SuggestFixResponse>('ai-assistant', {
     body: {
@@ -279,6 +287,7 @@ export async function suggestFix(
       headline: opportunity.headline,
       actions: opportunity.actions,
       page_url: opportunity.page,
+      competing_pages: opportunity.competingPages,
     },
   })
   if (error) return { configured: true, fix: null, error: error.message }
