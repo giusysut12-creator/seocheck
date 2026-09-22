@@ -123,6 +123,21 @@ describe('startCrawl', () => {
     expect(error).toContain('una sola pagina alla volta')
   })
 
+  it('says how often the platform stopped a worker when it runs out of slices', async () => {
+    // A page count alone can't tell "the site is slow" from "the platform
+    // kept stopping us", and those need opposite fixes.
+    invoke.mockResolvedValue(workerStopped())
+    // Progress keeps advancing, so the loop never gives up early — it spends
+    // every slice and stops on the cap instead.
+    let crawled = 0
+    auditProgress.mockImplementation(async () => ({ data: { urls_crawled: ++crawled, urls_total: 500 } }))
+
+    const { error } = await run()
+
+    expect(error).toContain('Supabase ha interrotto')
+    expect(error).toContain('una sola pagina alla volta')
+  })
+
   it('reports a missing deployment rather than a crawl failure', async () => {
     invoke.mockResolvedValue({ data: null, error: new FunctionsHttpError({ status: 404 }) })
 

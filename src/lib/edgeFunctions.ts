@@ -149,6 +149,10 @@ export async function startCrawl(
   let workerStops = 0
   let crawledSoFar = 0
   let pagesPerSlice = PAGES_PER_SLICE
+  // How often the platform stopped a worker across the whole run. One or two
+  // is noise; most of the calls means the cost is in what every invocation
+  // does before it fetches anything, and no slice size will fix that.
+  let totalWorkerStops = 0
 
   const report = () => {
     if (!last) return
@@ -167,6 +171,7 @@ export async function startCrawl(
 
     if (error) {
       if (isWorkerStopped(error)) {
+        totalWorkerStops++
         // Ask for less next time. Halving converges in a few steps, and one
         // page per call is the floor — if even that is stopped, the cost is
         // not in the crawling and no slice size will help.
@@ -218,9 +223,24 @@ export async function startCrawl(
 
   // A frontier that keeps growing must not spin forever. What was fetched is
   // saved, so this is somewhere to pick up from rather than a failure.
+  //
+  // Running out of slices having crawled far fewer pages than slices spent
+  // means the platform was stopping workers rather than the site being slow,
+  // and that distinction is invisible from a bare page count — so the numbers
+  // behind it are part of the message rather than buried in a log.
+  const d = last?.diagnostics
+  const cost = d
+    ? ` Ultima chiamata: ${d.pages_this_slice} pagine in ${(d.wall_ms / 1000).toFixed(1)}s, memoria ${d.rss_start_mb ?? '?'}→${d.rss_end_mb ?? '?'} MB.`
+    : ''
+  const stops =
+    totalWorkerStops > 0
+      ? ` Supabase ha interrotto ${totalWorkerStops} chiamate su ${MAX_SLICES}${
+          pagesPerSlice <= MIN_PAGES_PER_SLICE ? ', anche chiedendo una sola pagina alla volta' : ''
+        }.`
+      : ''
   return {
     data: last,
-    error: `Interrotto dopo ${last?.pages_crawled ?? 0} pagine per non proseguire all'infinito — premi Rianalizza per continuare.`,
+    error: `Interrotto dopo ${last?.pages_crawled ?? 0} pagine per non proseguire all'infinito — premi Rianalizza per continuare.${stops}${cost}`,
   }
 }
 

@@ -1257,18 +1257,28 @@ Deno.serve(async (req) => {
     const auditId = audit.id
     const domainId = domainRow?.id ?? null
 
-    // What the run knows so far. Written after every batch rather than at the
-    // end, so a slice that is cut short still leaves the next one further
-    // ahead than it found things.
+    // What the run knows so far.
+    //
+    // The frontier is the expensive part of an invocation: up to MAX_URLS * 2
+    // URLs of discovered plus as many linked, serialized and sent. Writing it
+    // after every batch made each invocation pay that repeatedly, which on a
+    // slice that only manages one or two pages is most of what the invocation
+    // does — and the platform stops workers that do too much. Pages are
+    // committed per batch on their own, so they are safe regardless; losing a
+    // slice's frontier only costs rediscovering links, never refetching a
+    // page. So it goes out once per slice, and only when it actually changed.
+    const frontierSizeAtStart = discovered.size + linkedFrom.size
     const saveFrontier = async () => {
+      const frontierChanged = discovered.size + linkedFrom.size !== frontierSizeAtStart
       await db
         .from('site_audits')
         .update({
           urls_crawled: visited.size,
           urls_total: Math.min(discovered.size, MAX_URLS),
           urls_errored: urlsErrored,
-          discovered_urls: Array.from(discovered.values()),
-          linked_urls: Array.from(linkedFrom),
+          ...(frontierChanged
+            ? { discovered_urls: Array.from(discovered.values()), linked_urls: Array.from(linkedFrom) }
+            : {}),
         })
         .eq('id', auditId)
     }
@@ -1411,13 +1421,13 @@ Deno.serve(async (req) => {
 
       // Commit as each batch lands. A worker that is stopped part-way through
       // a slice used to lose the whole slice; now the pages already fetched
-      // are on record and the next call resumes behind them.
+      // are on record and the next call resumes behind them. The frontier
+      // does not go out here — see saveFrontier above for why.
       if (batchRows.length > 0) {
         await db
           .from('pages')
           .upsert(batchRows.map((r) => toPageRow(projectId, domainId, r)), { onConflict: 'project_id,url' })
       }
-      await saveFrontier()
 
       // Ending the slice beats sleeping past its budget: the next call
       // resumes, and the site still gets the pause it asked for.
