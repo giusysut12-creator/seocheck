@@ -322,6 +322,7 @@ function OpportunityList({
                 headline={o.headline}
                 actions={o.actions}
                 page={o.page}
+                pageCrawled={o.page ? Boolean(page) : undefined}
                 competingPages={o.competingPages}
               />
 

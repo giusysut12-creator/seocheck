@@ -19,6 +19,7 @@ export function AiFixSuggestion({
   headline,
   actions,
   page,
+  pageCrawled,
   competingPages,
 }: {
   projectId: string
@@ -27,12 +28,23 @@ export function AiFixSuggestion({
   headline: string
   actions: string[]
   page: string | null
+  /**
+   * Whether `page` has been crawled yet. Known upfront from the same lookup
+   * that decides "Apri analisi pagina", so the card can say so before the
+   * user spends a click (and an AI call) discovering it — the AI would
+   * refuse to invent a rewrite for a page it has no facts about anyway.
+   * Undefined when `page` is null, or the caller hasn't checked.
+   */
+  pageCrawled?: boolean
   /** For 'cannibalization': every page competing for the keyword. */
   competingPages?: { page: string; impressions: number; clicks: number; position: number | null }[]
 }) {
   const [state, setState] = React.useState<'idle' | 'loading' | 'done' | 'unconfigured' | 'error'>('idle')
   const [fix, setFix] = React.useState<SuggestedFix | null>(null)
   const [error, setError] = React.useState<string | null>(null)
+  // Trying anyway overrides the upfront "not crawled" notice — the crawl
+  // coverage known here can be a step behind a scan that just finished.
+  const [tryAnyway, setTryAnyway] = React.useState(false)
 
   async function generate() {
     setState('loading')
@@ -49,6 +61,24 @@ export function AiFixSuggestion({
     }
     setFix(result.fix)
     setState('done')
+  }
+
+  if (state === 'idle' && page && pageCrawled === false && !tryAnyway) {
+    return (
+      <div className="space-y-1">
+        <p className="text-xs text-muted-foreground">
+          Questa pagina non è ancora stata scansionata — avvia un controllo del sito per generare una correzione
+          mirata su title, meta description e H1 reali.
+        </p>
+        <button
+          type="button"
+          onClick={() => setTryAnyway(true)}
+          className="text-xs text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground"
+        >
+          Ho appena scansionato, prova comunque
+        </button>
+      </div>
+    )
   }
 
   if (state === 'idle' || state === 'loading') {
