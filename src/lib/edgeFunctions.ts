@@ -272,6 +272,55 @@ export async function checkAiConfigured(): Promise<boolean> {
   return data?.configured ?? false
 }
 
+/**
+ * Internal names of the data the assistant is grounded on, and what to call
+ * them when they surface in text meant for the user.
+ *
+ * The prompt forbids naming these, and the model breaks that rule anyway —
+ * it wrote "L'estratto del contenuto (current_content_excerpt) è null" onto
+ * a card read by a shop owner, for whom that parenthesis is noise attached
+ * to an otherwise correct instruction. A display rule that the user can see
+ * being broken belongs in code, not only in a prompt.
+ */
+const INTERNAL_FIELD_NAMES: [RegExp, string][] = [
+  [/\b(?:current_)?content_excerpt\b/gi, 'il testo della pagina'],
+  [/\bcontent_unavailable_reason\b/gi, 'il testo della pagina'],
+  [/\bcurrent_title\b/gi, 'il titolo attuale'],
+  [/\bcurrent_meta_description\b/gi, 'la meta description attuale'],
+  [/\bcurrent_h1\b/gi, "l'H1 attuale"],
+  [/\bword_count\b/gi, 'il numero di parole'],
+  [/\bcompeting_pages\b/gi, 'le pagine in concorrenza'],
+  [/\binternal_link_candidates\b/gi, 'le altre pagine del sito'],
+  [/\bsuggested_actions\b/gi, 'la lista di cose da fare'],
+]
+
+/**
+ * Rewrites assistant text so it reads as advice rather than as a field dump.
+ * Drops a bare field name in brackets outright — it only ever restates the
+ * phrase before it — then renames any that remain and turns "è null" into
+ * language that says something to someone who never saw the data.
+ */
+export function humanizeAssistantText(text: string): string {
+  let out = text
+  for (const [pattern, _label] of INTERNAL_FIELD_NAMES) {
+    out = out.replace(new RegExp(`\\s*[(\\[]\\s*${pattern.source}\\s*[)\\]]`, 'gi'), '')
+  }
+  for (const [pattern, label] of INTERNAL_FIELD_NAMES) {
+    out = out.replace(pattern, label)
+  }
+  return (
+    out
+      // No \b before "è": JavaScript word boundaries are ASCII-only, so
+      // \bè never matches after a space and the rule would silently do
+      // nothing — which is how "è null" reached a user-facing card.
+      .replace(/è\s+null\b/gi, 'non è disponibile')
+      .replace(/sono\s+null\b/gi, 'non sono disponibili')
+      .replace(/is\s+null\b/gi, 'non è disponibile')
+      .replace(/[ \t]{2,}/g, ' ')
+      .trim()
+  )
+}
+
 /** One ready-to-paste section added to a thin page. */
 export interface ContentAddition {
   heading: string
@@ -368,18 +417,21 @@ export async function suggestFix(
       title: data.fix?.title ?? null,
       metaDescription: data.fix?.meta_description ?? null,
       h1: data.fix?.h1 ?? null,
-      contentAdditions: data.fix?.content_additions ?? [],
+      contentAdditions: (data.fix?.content_additions ?? []).map((c) => ({
+        heading: humanizeAssistantText(c.heading),
+        paragraph: humanizeAssistantText(c.paragraph),
+      })),
       internalLinks: (data.fix?.internal_links ?? []).map((l) => ({
         fromUrl: l.from_url,
         anchorText: l.anchor_text,
-        reason: l.reason,
+        reason: humanizeAssistantText(l.reason ?? ''),
       })),
       steps: (data.fix?.steps ?? []).map((st) => ({
         action: st.action,
         done: st.done === 'ai' || st.done === 'non_applicabile' ? st.done : ('tu' as const),
-        detail: st.detail,
+        detail: humanizeAssistantText(st.detail),
       })),
-      notes: data.fix?.notes ?? '',
+      notes: humanizeAssistantText(data.fix?.notes ?? ''),
     },
     error: null,
   }

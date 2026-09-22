@@ -21,7 +21,7 @@ vi.mock('@/lib/supabase', () => ({
   },
 }))
 
-const { startCrawl, checkAiConfigured, suggestFix } = await import('./edgeFunctions')
+const { startCrawl, checkAiConfigured, suggestFix, humanizeAssistantText } = await import('./edgeFunctions')
 
 function workerStopped() {
   return { data: null, error: new FunctionsHttpError({ status: 546 }) }
@@ -163,6 +163,27 @@ describe('checkAiConfigured', () => {
     invoke.mockResolvedValue({ data: null, error: new FunctionsHttpError({ status: 404 }) })
 
     expect(await checkAiConfigured()).toBe(false)
+  })
+})
+
+describe('humanizeAssistantText', () => {
+  it('drops a field name the model put in brackets rather than renaming it twice', () => {
+    // Verbatim from a real card: correct advice, with an internal name
+    // attached that means nothing to the shop owner reading it.
+    expect(
+      humanizeAssistantText("L'estratto del contenuto (current_content_excerpt) è null. Esegui un Site Audit."),
+    ).toBe("L'estratto del contenuto non è disponibile. Esegui un Site Audit.")
+  })
+
+  it('renames a field the model used as part of the sentence', () => {
+    expect(humanizeAssistantText('Il current_title contiene già la keyword.')).toBe(
+      'Il il titolo attuale contiene già la keyword.',
+    )
+  })
+
+  it('leaves ordinary advice untouched', () => {
+    const text = 'Ho aggiunto 4 link interni da pagine Sailor Moon per rafforzare la rilevanza.'
+    expect(humanizeAssistantText(text)).toBe(text)
   })
 })
 
