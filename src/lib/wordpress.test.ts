@@ -8,7 +8,7 @@ vi.mock('@/lib/supabase', () => ({
   supabase: { functions: { invoke: (...args: unknown[]) => invoke(...args) } },
 }))
 
-const { connectWordPress, disconnectWordPress, getWordPressStatus } = await import('./wordpress')
+const { applyFix, connectWordPress, disconnectWordPress, getWordPressStatus, previewFix } = await import('./wordpress')
 
 beforeEach(() => invoke.mockReset())
 
@@ -112,5 +112,87 @@ describe('disconnectWordPress', () => {
     expect(invoke).toHaveBeenCalledWith('wordpress-connect', {
       body: { action: 'disconnect', project_id: 'project-1' },
     })
+  })
+})
+
+describe('previewFix', () => {
+  beforeEach(() => invoke.mockReset())
+
+  it('reports what a publish would replace, without writing', async () => {
+    invoke.mockResolvedValue({
+      data: {
+        found: true,
+        type: 'prodotto',
+        id: 42,
+        link: 'https://shop.example.it/prodotto/zaino/',
+        post_title: 'Zaino Tweety',
+        current_title: 'Zaino | Shop',
+        current_meta_description: null,
+      },
+      error: null,
+    })
+
+    const preview = await previewFix('p1', {
+      pageUrl: 'https://shop.example.it/prodotto/zaino/',
+      title: 'Nuovo titolo',
+      metaDescription: 'Nuova descrizione',
+    })
+
+    expect(preview.type).toBe('prodotto')
+    expect(preview.postTitle).toBe('Zaino Tweety')
+    expect(preview.currentTitle).toBe('Zaino | Shop')
+    expect(preview.currentMetaDescription).toBeNull()
+    expect(invoke).toHaveBeenCalledWith('wordpress-connect', {
+      body: expect.objectContaining({ action: 'preview_fix', project_id: 'p1' }),
+    })
+  })
+
+  it('refuses rather than guessing when the page cannot be matched', async () => {
+    invoke.mockResolvedValue({
+      data: { error: 'Non ho trovato con certezza questa pagina su WordPress.', reason: 'page_not_found' },
+      error: null,
+    })
+
+    await expect(
+      previewFix('p1', { pageUrl: 'https://shop.example.it/x/', title: 't', metaDescription: 'd' }),
+    ).rejects.toThrow(/non ho trovato con certezza/i)
+  })
+})
+
+describe('applyFix', () => {
+  beforeEach(() => invoke.mockReset())
+
+  it('publishes the approved fields', async () => {
+    invoke.mockResolvedValue({ data: { applied: true, link: 'https://shop.example.it/prodotto/zaino/' }, error: null })
+
+    const result = await applyFix('p1', {
+      pageUrl: 'https://shop.example.it/prodotto/zaino/',
+      title: 'Nuovo titolo',
+      metaDescription: 'Nuova descrizione',
+    })
+
+    expect(result.link).toBe('https://shop.example.it/prodotto/zaino/')
+    expect(invoke).toHaveBeenCalledWith('wordpress-connect', {
+      body: {
+        action: 'apply_fix',
+        project_id: 'p1',
+        page_url: 'https://shop.example.it/prodotto/zaino/',
+        title: 'Nuovo titolo',
+        meta_description: 'Nuova descrizione',
+      },
+    })
+  })
+
+  it('surfaces a write that WordPress accepted but silently ignored', async () => {
+    // Yoast's keys are protected meta: reporting success here would be a lie
+    // the user only discovers weeks later in Search Console.
+    invoke.mockResolvedValue({
+      data: { error: 'i campi Yoast non sono cambiati', reason: 'yoast_fields_not_writable' },
+      error: null,
+    })
+
+    await expect(
+      applyFix('p1', { pageUrl: 'https://shop.example.it/x/', title: 't', metaDescription: 'd' }),
+    ).rejects.toThrow(/non sono cambiati/i)
   })
 })

@@ -1,16 +1,19 @@
 import * as React from 'react'
-import { Check, Copy, Loader2, Sparkles } from 'lucide-react'
+import { Check, Copy, Loader2, Sparkles, UploadCloud } from 'lucide-react'
 import { suggestFix, type SuggestedFix } from '@/lib/edgeFunctions'
+import { applyFix, previewFix, type FixPreview } from '@/lib/wordpress'
 import { Button } from '@/components/ui/button'
 
 /**
- * Turns a generic opportunity recommendation into text the user can paste
- * straight into their own site. This never writes to the user's website —
- * it only returns text — because applying it automatically would need write
- * access to their CMS, which this app was never given and was not asked to
- * get: a wrong page match or a malformed write could damage a live page,
- * and that risk belongs to a separate, explicit integration, not a button
- * that fires on every opportunity card.
+ * Turns a generic opportunity recommendation into the rewritten title and
+ * meta description themselves — copyable, and publishable straight to
+ * WordPress when the project has a connection.
+ *
+ * Generating never touches the site: it only reads what the crawler already
+ * found. Publishing does write, and is gated behind its own explicit
+ * confirmation showing which entity matched (see PublishToWordPress below),
+ * because a wrong match on a live shop is expensive and not obviously
+ * reversible.
  */
 export function AiFixSuggestion({
   projectId,
@@ -114,9 +117,127 @@ export function AiFixSuggestion({
       {fix!.title && <CopyField label="Titolo suggerito" value={fix!.title} />}
       {fix!.metaDescription && <CopyField label="Meta description suggerita" value={fix!.metaDescription} />}
       {fix!.notes && <p className="text-xs text-muted-foreground">{fix!.notes}</p>}
-      <p className="text-[11px] text-muted-foreground">
-        Testo generato dall'AI da incollare tu stesso nel pannello del tuo sito — nulla viene modificato qui.
+      {page && (fix!.title || fix!.metaDescription) ? (
+        <PublishToWordPress
+          projectId={projectId}
+          pageUrl={page}
+          title={fix!.title}
+          metaDescription={fix!.metaDescription}
+        />
+      ) : (
+        <p className="text-[11px] text-muted-foreground">
+          Testo generato dall'AI da incollare tu stesso nel pannello del tuo sito.
+        </p>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Publishes an approved rewrite to the user's WordPress site.
+ *
+ * Deliberately two steps. The first only resolves which post, page or
+ * product the URL matched and what it currently says; nothing is written
+ * until the user has seen that and confirmed. This writes to a live shop,
+ * where a wrong match is expensive and not obviously reversible, so the
+ * confirmation is worth the extra click.
+ */
+function PublishToWordPress({
+  projectId,
+  pageUrl,
+  title,
+  metaDescription,
+}: {
+  projectId: string
+  pageUrl: string
+  title: string | null
+  metaDescription: string | null
+}) {
+  const [state, setState] = React.useState<'idle' | 'checking' | 'confirm' | 'publishing' | 'done' | 'error'>('idle')
+  const [preview, setPreview] = React.useState<FixPreview | null>(null)
+  const [error, setError] = React.useState<string | null>(null)
+
+  async function check() {
+    setState('checking')
+    setError(null)
+    try {
+      setPreview(await previewFix(projectId, { pageUrl, title, metaDescription }))
+      setState('confirm')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Verifica non riuscita')
+      setState('error')
+    }
+  }
+
+  async function publish() {
+    setState('publishing')
+    setError(null)
+    try {
+      await applyFix(projectId, { pageUrl, title, metaDescription })
+      setState('done')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Pubblicazione non riuscita')
+      setState('error')
+    }
+  }
+
+  if (state === 'done') {
+    return (
+      <p className="flex items-center gap-1.5 text-xs text-success">
+        <Check className="size-3.5" /> Pubblicato su WordPress. Google lo rileverà alla prossima scansione del sito.
       </p>
+    )
+  }
+
+  if (state === 'confirm' && preview) {
+    return (
+      <div className="space-y-2 rounded-md border border-border bg-background/60 p-2.5">
+        <p className="text-xs text-foreground">
+          Trovato su WordPress: <strong className="font-medium">{preview.type}</strong> «{preview.postTitle}».
+        </p>
+        <div className="space-y-1 text-[11px] text-muted-foreground">
+          <p>
+            Titolo SEO attuale: {preview.currentTitle ? `«${preview.currentTitle}»` : 'non impostato (usa quello del prodotto)'}
+          </p>
+          <p>
+            Meta description attuale:{' '}
+            {preview.currentMetaDescription ? `«${preview.currentMetaDescription}»` : 'non impostata'}
+          </p>
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          Verranno sovrascritti solo questi due campi di Yoast. Il nome del prodotto e il contenuto della pagina non
+          vengono toccati.
+        </p>
+        <div className="flex items-center gap-2">
+          <Button variant="accent" size="sm" onClick={publish} disabled={state !== 'confirm'}>
+            <UploadCloud className="size-3.5" /> Conferma e pubblica
+          </Button>
+          <button
+            type="button"
+            onClick={() => setState('idle')}
+            className="text-xs text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground"
+          >
+            Annulla
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="outline" size="sm" onClick={check} disabled={state === 'checking' || state === 'publishing'}>
+          {state === 'checking' || state === 'publishing' ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <UploadCloud className="size-3.5" />
+          )}
+          {state === 'publishing' ? 'Pubblicazione…' : 'Pubblica su WordPress'}
+        </Button>
+        <span className="text-[11px] text-muted-foreground">oppure copia i campi qui sopra a mano</span>
+      </div>
+      {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   )
 }

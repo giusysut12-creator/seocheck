@@ -34,6 +34,8 @@ interface RawResponse {
   seo_plugin?: SeoPlugin
   connected_at?: string
   last_verified_at?: string
+  // preview_fix / apply_fix
+  [key: string]: unknown
 }
 
 async function call(projectId: string, action: string, payload: Record<string, unknown> = {}): Promise<RawResponse> {
@@ -83,4 +85,51 @@ export async function connectWordPress(
 
 export async function disconnectWordPress(projectId: string): Promise<void> {
   await call(projectId, 'disconnect')
+}
+
+/** What a publish would change, resolved on the site but not yet written. */
+export interface FixPreview {
+  /** 'prodotto' | 'pagina' | 'articolo' — what WordPress matched. */
+  type: string
+  link: string
+  postTitle: string
+  currentTitle: string | null
+  currentMetaDescription: string | null
+}
+
+/**
+ * Resolves the page on WordPress and reports what a publish would replace,
+ * writing nothing. The user confirms against this: on a live shop, seeing
+ * which entity matched and what it currently says is the difference between
+ * an informed click and a blind one.
+ */
+export async function previewFix(
+  projectId: string,
+  input: { pageUrl: string; title: string | null; metaDescription: string | null },
+): Promise<FixPreview> {
+  const raw = await call(projectId, 'preview_fix', {
+    page_url: input.pageUrl,
+    title: input.title,
+    meta_description: input.metaDescription,
+  })
+  return {
+    type: (raw.type as string) ?? 'pagina',
+    link: (raw.link as string) ?? input.pageUrl,
+    postTitle: (raw.post_title as string) ?? '',
+    currentTitle: (raw.current_title as string | null) ?? null,
+    currentMetaDescription: (raw.current_meta_description as string | null) ?? null,
+  }
+}
+
+/** Writes the approved SEO title and meta description, verified afterwards. */
+export async function applyFix(
+  projectId: string,
+  input: { pageUrl: string; title: string | null; metaDescription: string | null },
+): Promise<{ link: string }> {
+  const raw = await call(projectId, 'apply_fix', {
+    page_url: input.pageUrl,
+    title: input.title,
+    meta_description: input.metaDescription,
+  })
+  return { link: (raw.link as string) ?? input.pageUrl }
 }

@@ -1,17 +1,21 @@
 // Supabase Edge Function: wordpress-connect
 //
-// Phase 1 of "Applica al sito": storing and verifying a per-project
-// WordPress connection. This function never writes anything to the user's
-// site — it only checks that the given credentials can authenticate and
-// stores them for a later apply step (built separately, once this is
-// confirmed working) to use.
+// The per-project WordPress connection, and publishing an approved SEO fix
+// through it.
 //
 // Credential: a WordPress Application Password (Users → Profile →
 // Application Passwords in wp-admin) — never the user's real login
 // password. It is scoped to the REST API and revocable in one click from
 // the user's own site, independent of their real account credentials.
 //
-// Actions: status | connect | disconnect
+// What it writes: the Yoast SEO title and meta description, and nothing
+// else. Never the post title or product name — the user approved a search
+// snippet, not a rename of a product on a live shop. Every write is
+// preceded by an exact permalink match and followed by reading the values
+// back, because WordPress accepts writes to protected meta keys and
+// silently ignores them unless the site registered them for REST.
+//
+// Actions: status | connect | disconnect | preview_fix | apply_fix
 
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4'
 
@@ -94,6 +98,152 @@ async function verifyCredentials(siteUrl: string, username: string, appPassword:
   return { capabilitiesKnown: true, canEdit }
 }
 
+/** Yoast stores the SEO title and meta description in these post meta keys. */
+const YOAST_TITLE_KEY = '_yoast_wpseo_title'
+const YOAST_DESC_KEY = '_yoast_wpseo_metadesc'
+
+/**
+ * Mirrors normalize_url() in the database, so a permalink coming back from
+ * WordPress can be compared with the URL the crawler stored.
+ */
+function normalizeUrl(url: string): string {
+  return url
+    .toLowerCase()
+    .replace(/#.*$/, '')
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/\/+$/, '')
+}
+
+interface WpEntity {
+  /** Which API writes it: WordPress core, or WooCommerce for products. */
+  api: 'wp' | 'wc'
+  route: string
+  id: number
+  link: string
+  postTitle: string
+  currentSeoTitle: string | null
+  currentSeoDescription: string | null
+}
+
+function basicAuth(conn: { username: string; app_password: string }): string {
+  return `Basic ${btoa(`${conn.username}:${conn.app_password}`)}`
+}
+
+/**
+ * Finds the post, page or product behind a crawled URL.
+ *
+ * The crawler only ever stored URLs, and WordPress writes by ID, so the two
+ * have to be bridged. The slug narrows it down; the permalink comparison is
+ * what makes it safe — two content types can share a slug, and writing SEO
+ * fields onto the wrong product of a live shop is exactly the damage this
+ * check exists to prevent. Anything that doesn't match exactly is refused
+ * rather than guessed at.
+ */
+async function resolveEntity(
+  conn: { site_url: string; username: string; app_password: string },
+  pageUrl: string,
+): Promise<WpEntity | null> {
+  const path = new URL(pageUrl).pathname.replace(/\/+$/, '')
+  const slug = decodeURIComponent(path.split('/').filter(Boolean).pop() ?? '')
+  if (!slug) return null
+
+  const attempts: { api: 'wp' | 'wc'; route: string; url: string }[] = [
+    { api: 'wp', route: 'pages', url: `${conn.site_url}/wp-json/wp/v2/pages?slug=${encodeURIComponent(slug)}&context=edit` },
+    { api: 'wp', route: 'posts', url: `${conn.site_url}/wp-json/wp/v2/posts?slug=${encodeURIComponent(slug)}&context=edit` },
+    { api: 'wp', route: 'product', url: `${conn.site_url}/wp-json/wp/v2/product?slug=${encodeURIComponent(slug)}&context=edit` },
+    { api: 'wc', route: 'products', url: `${conn.site_url}/wp-json/wc/v3/products?slug=${encodeURIComponent(slug)}` },
+  ]
+
+  for (const attempt of attempts) {
+    let res: Response
+    try {
+      res = await fetch(attempt.url, { headers: { Authorization: basicAuth(conn) } })
+    } catch {
+      continue
+    }
+    if (!res.ok) {
+      await res.body?.cancel()
+      continue
+    }
+    const rows = (await res.json().catch(() => null)) as Record<string, unknown>[] | null
+    if (!Array.isArray(rows)) continue
+
+    for (const row of rows) {
+      const link = (row.link ?? row.permalink) as string | undefined
+      if (!link || normalizeUrl(link) !== normalizeUrl(pageUrl)) continue
+
+      const meta = (row.meta ?? {}) as Record<string, unknown>
+      const metaData = (row.meta_data ?? []) as { key: string; value: unknown }[]
+      const fromMetaData = (key: string) => metaData.find((m) => m.key === key)?.value as string | undefined
+      const titleField = row.title as { raw?: string; rendered?: string } | undefined
+
+      return {
+        api: attempt.api,
+        route: attempt.route,
+        id: Number(row.id),
+        link,
+        postTitle: (titleField?.raw ?? titleField?.rendered ?? (row.name as string) ?? '') as string,
+        currentSeoTitle: ((meta[YOAST_TITLE_KEY] as string) ?? fromMetaData(YOAST_TITLE_KEY) ?? null) || null,
+        currentSeoDescription: ((meta[YOAST_DESC_KEY] as string) ?? fromMetaData(YOAST_DESC_KEY) ?? null) || null,
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * Writes the Yoast SEO title and meta description — and nothing else.
+ *
+ * Deliberately never touches the post title or product name: what the user
+ * approved is a search-result snippet, and renaming a product on a live shop
+ * is a different, far larger change they did not ask for. WordPress core
+ * treats Yoast's keys as protected meta and ignores writes to them unless the
+ * site has registered them for REST, so the write is verified by reading the
+ * values back; an unverified write is reported as not applied rather than
+ * announced as success.
+ */
+async function writeSeoFields(
+  conn: { site_url: string; username: string; app_password: string },
+  entity: WpEntity,
+  fields: { title: string | null; description: string | null },
+): Promise<{ applied: boolean; title: string | null; description: string | null }> {
+  const meta: Record<string, string> = {}
+  if (fields.title) meta[YOAST_TITLE_KEY] = fields.title
+  if (fields.description) meta[YOAST_DESC_KEY] = fields.description
+
+  const url =
+    entity.api === 'wc'
+      ? `${conn.site_url}/wp-json/wc/v3/products/${entity.id}`
+      : `${conn.site_url}/wp-json/wp/v2/${entity.route}/${entity.id}`
+  const body =
+    entity.api === 'wc'
+      ? { meta_data: Object.entries(meta).map(([key, value]) => ({ key, value })) }
+      : { meta }
+
+  const res = await fetch(url, {
+    method: entity.api === 'wc' ? 'PUT' : 'POST',
+    headers: { Authorization: basicAuth(conn), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '')
+    console.error('SEO field write failed', res.status, detail)
+    throw new WpError(`WordPress ha rifiutato la scrittura (HTTP ${res.status}).`, 'write_rejected')
+  }
+  await res.body?.cancel()
+
+  // Trust nothing: read the values back and compare.
+  const after = await resolveEntity(conn, entity.link)
+  const titleOk = !fields.title || after?.currentSeoTitle === fields.title
+  const descOk = !fields.description || after?.currentSeoDescription === fields.description
+  return {
+    applied: Boolean(after) && titleOk && descOk,
+    title: after?.currentSeoTitle ?? null,
+    description: after?.currentSeoDescription ?? null,
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
@@ -105,6 +255,10 @@ Deno.serve(async (req) => {
     username?: string
     app_password?: string
     seo_plugin?: SeoPlugin
+    // preview_fix / apply_fix
+    page_url?: string
+    title?: string | null
+    meta_description?: string | null
   }
   try {
     body = await req.json()
@@ -178,6 +332,75 @@ Deno.serve(async (req) => {
       case 'disconnect': {
         await db.from('wordpress_connections').delete().eq('project_id', projectId)
         return jsonResponse({ connected: false })
+      }
+
+      // Finds what would be written and what it would replace, changing
+      // nothing. The user confirms against this before anything is applied:
+      // a preview of the actual entity that matched is the difference
+      // between an informed click and a blind one on a live shop.
+      case 'preview_fix':
+      case 'apply_fix': {
+        if (!body.page_url) return jsonResponse({ error: 'page_url is required' }, 400)
+        if (!body.title && !body.meta_description) {
+          return jsonResponse({ error: 'Niente da pubblicare: nessun titolo né meta description.' }, 400)
+        }
+
+        const { data: connRaw } = await db
+          .from('wordpress_connections')
+          .select('site_url, username, app_password, seo_plugin')
+          .eq('project_id', projectId)
+          .maybeSingle()
+        const conn = connRaw as { site_url: string; username: string; app_password: string; seo_plugin: SeoPlugin } | null
+        if (!conn) {
+          throw new WpError('Connetti prima il tuo sito WordPress a questo progetto.', 'not_connected')
+        }
+        if (conn.seo_plugin !== 'yoast') {
+          throw new WpError(
+            'La pubblicazione automatica al momento scrive solo nei campi di Yoast SEO.',
+            'unsupported_seo_plugin',
+          )
+        }
+
+        const entity = await resolveEntity(conn, body.page_url)
+        if (!entity) {
+          throw new WpError(
+            'Non ho trovato con certezza questa pagina su WordPress. Aggiornala a mano per sicurezza.',
+            'page_not_found',
+          )
+        }
+
+        if (action === 'preview_fix') {
+          return jsonResponse({
+            found: true,
+            type: entity.api === 'wc' ? 'prodotto' : entity.route === 'pages' ? 'pagina' : 'articolo',
+            id: entity.id,
+            link: entity.link,
+            post_title: entity.postTitle,
+            current_title: entity.currentSeoTitle,
+            current_meta_description: entity.currentSeoDescription,
+          })
+        }
+
+        const result = await writeSeoFields(conn, entity, {
+          title: body.title ?? null,
+          description: body.meta_description ?? null,
+        })
+        if (!result.applied) {
+          // Yoast's keys are protected meta: WordPress accepts the request and
+          // silently ignores them unless the site registered them for REST.
+          // Saying "published" here would be a lie the user only discovers
+          // weeks later in Search Console.
+          throw new WpError(
+            'WordPress ha accettato la richiesta ma i campi Yoast non sono cambiati: il sito non espone quei campi alle API. Serve un piccolo snippet una tantum — te lo fornisco io.',
+            'yoast_fields_not_writable',
+          )
+        }
+        return jsonResponse({
+          applied: true,
+          link: entity.link,
+          title: result.title,
+          meta_description: result.description,
+        })
       }
 
       default:
