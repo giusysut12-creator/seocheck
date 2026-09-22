@@ -45,12 +45,35 @@ export default function Opportunities() {
   const [pagesByUrl, setPagesByUrl] = React.useState<Map<string, Page>>(new Map())
   const [loading, setLoading] = React.useState(true)
   const [reloadToken, setReloadToken] = React.useState(0)
+  const [onlyCrawled, setOnlyCrawled] = React.useState(false)
+
+  /**
+   * Whether the crawler has this opportunity's page, which decides whether a
+   * ready-to-paste rewrite is possible at all: the AI needs the page's real
+   * current title/meta/H1 to rewrite them, and refuses to invent them.
+   * Opportunities themselves come from Search Console and are real either
+   * way, so this labels them rather than hiding them by default.
+   */
+  const isActionable = React.useCallback(
+    (o: ClassifiedOpportunity) => !o.page || pagesByUrl.has(normalizeUrl(o.page)),
+    [pagesByUrl],
+  )
+
+  const visible = React.useMemo(
+    () => (onlyCrawled ? opportunities.filter(isActionable) : opportunities),
+    [opportunities, onlyCrawled, isActionable],
+  )
+
+  const actionableCount = React.useMemo(
+    () => opportunities.filter(isActionable).length,
+    [opportunities, isActionable],
+  )
 
   const byKind = React.useMemo(() => {
     const groups = new Map<OpportunityKind, ClassifiedOpportunity[]>(KIND_ORDER.map((k) => [k, []]))
-    for (const o of opportunities) groups.get(o.kind)!.push(o)
+    for (const o of visible) groups.get(o.kind)!.push(o)
     return groups
-  }, [opportunities])
+  }, [visible])
 
   React.useEffect(() => {
     if (!id) return
@@ -189,9 +212,27 @@ export default function Opportunities() {
 
           <WordPressConnectionCard projectId={project.id} />
 
+          {opportunities.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <p className="text-muted-foreground">
+                <strong className="font-semibold text-foreground">{actionableCount}</strong> di {opportunities.length}{' '}
+                riguardano pagine già scansionate — solo su quelle l'AI può scrivere la correzione pronta.
+              </p>
+              <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={onlyCrawled}
+                  onChange={(e) => setOnlyCrawled(e.target.checked)}
+                  className="size-3.5 accent-[var(--color-accent)]"
+                />
+                Mostra solo quelle su cui posso intervenire
+              </label>
+            </div>
+          )}
+
           <Tabs defaultValue="all">
             <TabsList className="flex-wrap">
-              <TabsTrigger value="all">Priorità ({opportunities.length})</TabsTrigger>
+              <TabsTrigger value="all">Priorità ({visible.length})</TabsTrigger>
               {KIND_ORDER.map((kind) => (
                 <TabsTrigger key={kind} value={kind}>
                   {KIND_LABELS[kind].label} ({byKind.get(kind)!.length})
@@ -201,7 +242,7 @@ export default function Opportunities() {
             </TabsList>
 
             <TabsContent value="all">
-              <OpportunityList items={opportunities} projectId={project.id} pagesByUrl={pagesByUrl} showKind />
+              <OpportunityList items={visible} projectId={project.id} pagesByUrl={pagesByUrl} showKind />
             </TabsContent>
 
             {KIND_ORDER.map((kind) => (
@@ -297,6 +338,14 @@ function OpportunityList({
                         {KIND_LABELS[o.kind].label}
                       </Badge>
                     )}
+                    {/* Whether a ready-to-paste rewrite is possible at all,
+                        visible before the user invests a click in finding out. */}
+                    {o.page &&
+                      (page ? (
+                        <Badge variant="success">Scansionata</Badge>
+                      ) : (
+                        <Badge variant="warning">Non scansionata</Badge>
+                      ))}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">{o.headline}</p>
                 </div>

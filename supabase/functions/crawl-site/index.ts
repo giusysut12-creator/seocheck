@@ -891,6 +891,20 @@ const MAX_HTML_BYTES = 1_000_000
  * Links that are plainly not pages. Following them wastes a request and, worse,
  * pulls a file of unbounded size into a worker that has a memory budget.
  */
+/**
+ * Query parameters a WooCommerce/WordPress storefront generates for filtering,
+ * sorting, searching and cart actions.
+ *
+ * Each one produces a near-duplicate of a listing page — or no page at all —
+ * and a shop emits hundreds of them. Left in the frontier they consume the
+ * crawl budget the actual product pages need, which is how a crawl can report
+ * hundreds of pages while the products the user asks about were never fetched.
+ * Only links are filtered this way: URLs the site declares in its own sitemap
+ * are clean paths and stay untouched.
+ */
+const FACET_QUERY_PARAM =
+  /[?&](orderby|filter_[^=&]*|min_price|max_price|add-to-cart|add_to_wishlist|rating_filter|query_type_[^=&]*|product-page|paged|s|replytocom|utm_[^=&]*)=/i
+
 const NON_PAGE_EXTENSION =
   /\.(jpe?g|png|gif|webp|svg|ico|bmp|avif|css|js|mjs|map|json|xml|rss|atom|pdf|zip|rar|7z|gz|tar|mp[34]|m4a|wav|webm|avi|mov|mkv|woff2?|ttf|otf|eot|csv|xlsx?|docx?|pptx?|exe|dmg|apk)(?:$|\?)/i
 
@@ -1022,10 +1036,26 @@ async function fetchRobots(base: URL): Promise<RobotsRules> {
   return { disallow: [], allow: [], crawlDelaySeconds: null, sitemaps: [] }
 }
 
+/**
+ * Every URL the site itself declares, via robots.txt's Sitemap lines or
+ * /sitemap.xml.
+ *
+ * A WordPress/Yoast sitemap is an index whose children are split by content
+ * type — post-sitemap.xml, page-sitemap.xml, product-sitemap1.xml,
+ * product-sitemap2.xml, taxonomy sitemaps, and so on. Reading only the first
+ * few children silently skips whole content types: on a shop whose index
+ * lists posts and pages before products, that means skipping every product,
+ * which is precisely the content the crawl exists to analyze. So all of them
+ * are read, up to a bound that exists only to stop a pathological index from
+ * running away.
+ */
+const MAX_SITEMAP_INDEXES = 5
+const MAX_CHILD_SITEMAPS = 30
+
 async function fetchSitemapUrls(base: URL, robots: RobotsRules): Promise<string[]> {
   const candidates = robots.sitemaps.length > 0 ? robots.sitemaps : [new URL('/sitemap.xml', base).toString()]
   const found: string[] = []
-  for (const sitemapUrl of candidates.slice(0, 3)) {
+  for (const sitemapUrl of candidates.slice(0, MAX_SITEMAP_INDEXES)) {
     const result = await timedFetch(sitemapUrl, { follow: true })
     if (result.statusCode === 200 && result.html) {
       const locs = extractSitemapLocs(result.html)
@@ -1033,7 +1063,7 @@ async function fetchSitemapUrls(base: URL, robots: RobotsRules): Promise<string[
       const childSitemaps = locs.filter((l) => l.endsWith('.xml'))
       const urlLocs = locs.filter((l) => !l.endsWith('.xml'))
       found.push(...urlLocs)
-      for (const child of childSitemaps.slice(0, 3)) {
+      for (const child of childSitemaps.slice(0, MAX_CHILD_SITEMAPS)) {
         const childResult = await timedFetch(child, { follow: true })
         if (childResult.statusCode === 200 && childResult.html) {
           found.push(...extractSitemapLocs(childResult.html))
@@ -1319,6 +1349,7 @@ Deno.serve(async (req) => {
             for (const link of parsed.internalLinks) {
               const linkNorm = normalize(link)
               if (NON_PAGE_EXTENSION.test(linkNorm)) continue
+              if (FACET_QUERY_PARAM.test(linkNorm)) continue
               if (!discovered.has(linkNorm) && discovered.size < MAX_URLS * 2) {
                 discovered.set(linkNorm, link)
               }
