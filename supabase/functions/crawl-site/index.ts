@@ -852,7 +852,7 @@ export function buildCrawlerOpportunities(pages: CrawledPageResult[]): Opportuni
 
 export { CATEGORY_KEYS }
 
-const MAX_URLS = 100
+const MAX_URLS = 500
 const FETCH_TIMEOUT_MS = 8_000
 const CONCURRENCY = 4
 const DEFAULT_DELAY_MS = 100

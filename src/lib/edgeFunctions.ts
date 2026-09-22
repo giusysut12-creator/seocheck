@@ -35,8 +35,15 @@ export interface CrawlProgress {
  * and returns, because the platform kills a request that runs too long and a
  * killed request saves nothing. Driving the loop here keeps every caller —
  * and the audit itself — unaware of the chunking.
+ *
+ * Sized for MAX_URLS (crawl-site/index.ts) at the crawler's normal slice size
+ * (PAGES_PER_SLICE below), plus real headroom for slices that only got
+ * through fewer pages — a site with a Crawl-delay, or one that just forced a
+ * few halvings. A crawl that still hits this cap is not stuck: the frontier
+ * and every page found are saved, so pressing Rescan again resumes it rather
+ * than starting over.
  */
-const MAX_SLICES = 60
+const MAX_SLICES = 250
 
 /**
  * Supabase answers 546 when it stops a function worker for exceeding its

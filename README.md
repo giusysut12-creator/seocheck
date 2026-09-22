@@ -5,7 +5,7 @@ Supabase), inspired by the functional logic of tools like Ubersuggest / Ahrefs /
 Semrush — no branding, copy, or UI copied from them.
 
 Enter a domain and RankPilot runs a real server-side crawl (robots.txt, sitemap.xml,
-up to 100 pages), computes an SEO Health Score, and surfaces prioritized technical/
+up to 500 pages), computes an SEO Health Score, and surfaces prioritized technical/
 on-page issues — all without any third-party API key. Keyword, ranking, competitor,
 backlink and traffic data are designed around a pluggable `SEODataProvider`
 interface: until you connect a real SEO data vendor, those screens clearly say
@@ -81,7 +81,7 @@ RLS) after independently verifying the caller owns the project.
 ### Internal (Supabase Edge Functions, Deno)
 
 - **`crawl-site`** — `POST { project_id, max_pages? }`. Verifies the caller
-  owns the project, fetches `robots.txt` + `sitemap.xml`, crawls up to 100
+  owns the project, fetches `robots.txt` + `sitemap.xml`, crawls up to 500
   same-origin URLs (4 concurrent, respects `crawl-delay`, 8s timeout per
   request, avoids loops via a visited-set), parses each page's HTML with a
   dependency-free regex-based analyzer, computes prioritized audit issues + a
