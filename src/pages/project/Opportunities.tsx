@@ -25,7 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { cn, formatNumber } from '@/lib/utils'
+import { cn, formatNumber, normalizeUrl } from '@/lib/utils'
 
 const KIND_ORDER: OpportunityKind[] = ['ctr_gap', 'striking_distance', 'losing_ground', 'cannibalization']
 
@@ -103,14 +103,19 @@ export default function Opportunities() {
       const all = [...fromKeywords, ...fromCannibalization].sort((a, b) => b.score - a.score)
 
       // Link each opportunity to the crawled page, so the user can jump
-      // straight to what the audit found on it.
-      const urls = Array.from(new Set(all.map((o) => o.page).filter(Boolean))) as string[]
-      const { data: pageRows } = urls.length
-        ? await supabase.from('pages').select('*').eq('project_id', id!).in('url', urls)
-        : { data: [] }
+      // straight to what the audit found on it. Keyed on url_normalized —
+      // the same generated column Pages.tsx joins on — because Search
+      // Console's reported page URL and the crawler's raw stored URL can
+      // differ by scheme, www, or a trailing slash alone; comparing raw
+      // strings silently treats the same page as two unmatched ones.
+      const { data: pageRows } = await supabase.from('pages').select('*').eq('project_id', id!)
 
       if (!cancelled) {
-        setPagesByUrl(new Map(((pageRows as Page[]) ?? []).map((p) => [p.url, p])))
+        setPagesByUrl(
+          new Map(
+            ((pageRows as Page[]) ?? []).map((p) => [p.url_normalized ?? normalizeUrl(p.url), p]),
+          ),
+        )
         setOpportunities(all)
         setLoading(false)
       }
@@ -279,7 +284,7 @@ function OpportunityList({
   return (
     <div className="space-y-3">
       {visible.map((o) => {
-        const page = o.page ? pagesByUrl.get(o.page) : undefined
+        const page = o.page ? pagesByUrl.get(normalizeUrl(o.page)) : undefined
         return (
           <Card key={`${o.kind}-${o.keyword}`}>
             <CardContent className="space-y-3 p-4">

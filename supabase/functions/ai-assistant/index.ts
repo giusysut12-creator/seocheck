@@ -151,6 +151,23 @@ interface PageFacts {
   word_count: number | null
 }
 
+/**
+ * Mirrors normalize_url() in supabase/migrations/0002_google_search_console.sql
+ * exactly — it's how pages.url_normalized was computed, so a value here only
+ * lines up with that column if it's produced the same way. Search Console
+ * reports a page URL that can differ from the crawler's raw stored URL by
+ * scheme, www, or a trailing slash alone; matching on the raw url column
+ * silently treats the same page as two different, unmatched ones.
+ */
+function normalizeUrl(url: string): string {
+  return url
+    .toLowerCase()
+    .replace(/#.*$/, '')
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/\/+$/, '')
+}
+
 async function handleSuggestFix(
   db: ReturnType<typeof createClient>,
   projectId: string,
@@ -170,7 +187,7 @@ async function handleSuggestFix(
       .from('pages')
       .select('title, meta_description, h1, word_count')
       .eq('project_id', projectId)
-      .eq('url', input.pageUrl)
+      .eq('url_normalized', normalizeUrl(input.pageUrl))
       .maybeSingle()
     pageFacts = (data as unknown as PageFacts | null) ?? null
   }
@@ -181,12 +198,17 @@ async function handleSuggestFix(
   // rewrite it would for a plain CTR opportunity on that same page.
   let competingPageFacts: { url: string; impressions: number; title: string | null }[] = []
   if (input.competingPages.length > 1) {
-    const urls = input.competingPages.map((p) => p.page).slice(0, 6)
-    const { data } = await db.from('pages').select('url, title').eq('project_id', projectId).in('url', urls)
-    const titleByUrl = new Map(((data as { url: string; title: string | null }[] | null) ?? []).map((p) => [p.url, p.title]))
-    competingPageFacts = input.competingPages
-      .slice(0, 6)
-      .map((p) => ({ url: p.page, impressions: p.impressions, title: titleByUrl.get(p.page) ?? null }))
+    const top = input.competingPages.slice(0, 6)
+    const normalizedUrls = top.map((p) => normalizeUrl(p.page))
+    const { data } = await db.from('pages').select('url_normalized, title').eq('project_id', projectId).in('url_normalized', normalizedUrls)
+    const titleByNormalizedUrl = new Map(
+      ((data as { url_normalized: string; title: string | null }[] | null) ?? []).map((p) => [p.url_normalized, p.title]),
+    )
+    competingPageFacts = top.map((p) => ({
+      url: p.page,
+      impressions: p.impressions,
+      title: titleByNormalizedUrl.get(normalizeUrl(p.page)) ?? null,
+    }))
   }
 
   const context = {
