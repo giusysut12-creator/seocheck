@@ -198,34 +198,57 @@ export function AiFixSuggestion({
 }
 
 /**
+ * How each outcome is presented. The icon alone is not enough: under a
+ * heading that said "Cosa ho fatto", a raised-hand glyph on an item the AI
+ * had NOT done read as "done" — so every row carries the word too.
+ */
+const STEP_STATES: Record<FixStep['done'], { label: string; icon: typeof Check; className: string }> = {
+  ai: { label: 'Fatto', icon: Check, className: 'text-success' },
+  tu: { label: 'Da fare tu', icon: Hand, className: 'text-warning' },
+  non_applicabile: { label: 'Già a posto', icon: Minus, className: 'text-muted-foreground' },
+}
+
+/**
  * The to-do list, answered item by item. Showing the user's original wording
  * back with what was produced for it is how they can tell the list was
  * covered — and which items still need them.
  */
 function StepList({ steps }: { steps: FixStep[] }) {
+  const doneCount = steps.filter((s) => s.done === 'ai').length
+  const todoCount = steps.filter((s) => s.done === 'tu').length
+
   return (
     <div className="space-y-1.5">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Cosa ho fatto</p>
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Le cose da fare, una per una
+        </p>
+        <p className="text-[11px] text-muted-foreground">
+          {doneCount} su {steps.length} fatte dall'AI
+          {todoCount > 0 && `, ${todoCount} ${todoCount === 1 ? 'richiede' : 'richiedono'} te`}
+        </p>
+      </div>
       <ul className="space-y-1.5">
-        {steps.map((step, i) => (
-          <li key={i} className="flex items-start gap-2">
-            <StepIcon done={step.done} />
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-foreground">{step.action}</p>
-              <p className="text-xs text-muted-foreground">{step.detail}</p>
-            </div>
-          </li>
-        ))}
+        {steps.map((step, i) => {
+          const state = STEP_STATES[step.done]
+          const Icon = state.icon
+          return (
+            <li key={i} className="flex items-start gap-2">
+              <Icon className={`mt-0.5 size-3.5 shrink-0 ${state.className}`} aria-hidden />
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-foreground">
+                  <span className={state.className}>{state.label}</span>
+                  <span className="text-muted-foreground"> · </span>
+                  {step.action}
+                </p>
+                <p className="text-xs text-muted-foreground">{step.detail}</p>
+              </div>
+            </li>
+          )
+        })}
       </ul>
     </div>
   )
-}
-
-function StepIcon({ done }: { done: FixStep['done'] }) {
-  if (done === 'ai') return <Check className="mt-0.5 size-3.5 shrink-0 text-success" aria-label="Fatto dall'AI" />
-  if (done === 'non_applicabile')
-    return <Minus className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-label="Già a posto" />
-  return <Hand className="mt-0.5 size-3.5 shrink-0 text-warning" aria-label="Da fare tu" />
 }
 
 /** Shortens a URL to its path, so a list of links stays readable. */
