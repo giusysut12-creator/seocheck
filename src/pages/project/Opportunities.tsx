@@ -15,6 +15,7 @@ import {
 } from '@/lib/seo/opportunityTypes'
 import type { Page, SeoOpportunity } from '@/lib/database.types'
 import { AiFixSuggestion } from '@/components/AiFixSuggestion'
+import { WordPressConnectionCard } from '@/components/WordPressConnectionCard'
 import { GoogleConnectionCard } from '@/components/google/GoogleConnectionCard'
 import { RescanButton } from '@/components/google/RescanButton'
 import { EmptyState } from '@/components/EmptyState'
@@ -180,6 +181,8 @@ export default function Opportunities() {
               </CardContent>
             </Card>
           )}
+
+          <WordPressConnectionCard projectId={project.id} />
 
           <Tabs defaultValue="all">
             <TabsList className="flex-wrap">

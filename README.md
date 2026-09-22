@@ -37,7 +37,8 @@ supabase/
   functions/
     crawl-site/            server-side SEO crawler (Deno)
     seo-provider-proxy/    SEODataProvider adapter (keeps API keys server-side)
-    ai-assistant/          AI SEO Assistant (grounded in project data only)
+    ai-assistant/          AI SEO Assistant + AI-generated on-page fixes
+    wordpress-connect/     stores/verifies a per-project WordPress connection
 ```
 
 Each Edge Function is a single self-contained `index.ts` with no cross-file
@@ -117,6 +118,18 @@ RLS) after independently verifying the caller owns the project.
     does not have. `src/components/AiFixSuggestion.tsx` is the "Genera
     correzione con AI" button on each opportunity card.
   Returns `{ configured: false }` when `AI_API_KEY` is unset.
+- **`wordpress-connect`** — `POST { action, project_id, ... }`, actions
+  `status | connect | disconnect`. Phase 1 of "Applica al sito": stores a
+  per-project WordPress Application Password (never the user's real login
+  password) after verifying it authenticates and can edit content, via
+  `GET {site}/wp-json/wp/v2/users/me?context=edit`. Written to
+  `wordpress_connections` (RLS enabled with no policies — service-role
+  only, same as `search_console_connections`); the frontend only ever
+  learns connection status back, never the stored password. This function
+  does not write to the site — an `apply_fix` action that does is a
+  separate, later addition once this connection step is confirmed working.
+  `src/components/WordPressConnectionCard.tsx` is the "Connetti sito
+  WordPress" card on the Opportunities page.
 
 ### External (bring your own)
 
