@@ -236,3 +236,62 @@ export async function askAiAssistant(
   if (data.error) return { configured: true, answer: null, error: data.error }
   return { configured: true, answer: data.answer ?? null, error: null }
 }
+
+/** Whether the AI assistant has a key configured, without asking it anything. */
+export async function checkAiConfigured(): Promise<boolean> {
+  const { data } = await supabase.functions.invoke<{ configured: boolean }>('ai-assistant', {
+    body: { action: 'status' },
+  })
+  return data?.configured ?? false
+}
+
+export interface SuggestedFix {
+  /** Omitted by the AI when a rewrite isn't warranted or safe — never invented. */
+  title: string | null
+  metaDescription: string | null
+  /** What changed and why, or the decision the user still needs to make. */
+  notes: string
+}
+
+interface SuggestFixResponse {
+  configured: boolean
+  fix?: { title?: string | null; meta_description?: string | null; notes?: string }
+  error?: string
+}
+
+/**
+ * Asks the AI assistant for a ready-to-paste title/meta description for one
+ * SEO Opportunity, grounded in that page's real crawled facts. This never
+ * touches the user's site — it only returns text for them to copy in
+ * themselves, since applying it automatically would need write access to
+ * their CMS that this app does not have.
+ */
+export async function suggestFix(
+  projectId: string,
+  opportunity: { keyword: string; kind: string; headline: string; actions: string[]; page: string | null },
+): Promise<{ configured: boolean; fix: SuggestedFix | null; error: string | null }> {
+  const { data, error } = await supabase.functions.invoke<SuggestFixResponse>('ai-assistant', {
+    body: {
+      action: 'suggest_fix',
+      project_id: projectId,
+      keyword: opportunity.keyword,
+      kind: opportunity.kind,
+      headline: opportunity.headline,
+      actions: opportunity.actions,
+      page_url: opportunity.page,
+    },
+  })
+  if (error) return { configured: true, fix: null, error: error.message }
+  if (!data) return { configured: false, fix: null, error: null }
+  if (!data.configured) return { configured: false, fix: null, error: null }
+  if (data.error) return { configured: true, fix: null, error: data.error }
+  return {
+    configured: true,
+    fix: {
+      title: data.fix?.title ?? null,
+      metaDescription: data.fix?.meta_description ?? null,
+      notes: data.fix?.notes ?? '',
+    },
+    error: null,
+  }
+}

@@ -101,12 +101,22 @@ RLS) after independently verifying the caller owns the project.
   `SEO_API_KEY`. Returns `{ configured: false }` when unset instead of
   fabricating data. Response mapping in `mapResponse()` targets a generic
   REST vendor shape — adjust it to match whichever provider you connect.
-- **`ai-assistant`** — `POST { project_id, question }`. Gathers only the
-  project's real stored data (latest audit, tracked keyword rankings, domain
-  metrics, opportunities, competitors, top pages) and sends it as context to
-  an LLM (Anthropic Messages API via `AI_API_KEY`) with a system prompt that
-  forbids inventing data and requires citing the metrics used. Returns
-  `{ configured: false }` when `AI_API_KEY` is unset.
+- **`ai-assistant`** — two actions, both gated on `AI_API_KEY` and both
+  answering only from data already stored for the project:
+  - `POST { project_id, question }` — gathers the project's real stored data
+    (latest audit, tracked keyword rankings, domain metrics, opportunities,
+    competitors, top pages) and sends it as context to an LLM (Anthropic
+    Messages API) with a system prompt that forbids inventing data and
+    requires citing the metrics used.
+  - `POST { action: 'suggest_fix', project_id, keyword, kind, headline, actions, page_url }`
+    — writes a ready-to-paste title tag and meta description for one SEO
+    Opportunity, grounded in that page's real crawled title/meta/H1 (via a
+    forced tool call, so the response is always structured). It only returns
+    text for the user to paste into their own site — it never writes to it,
+    since that would need write access to the user's CMS that this function
+    does not have. `src/components/AiFixSuggestion.tsx` is the "Genera
+    correzione con AI" button on each opportunity card.
+  Returns `{ configured: false }` when `AI_API_KEY` is unset.
 
 ### External (bring your own)
 

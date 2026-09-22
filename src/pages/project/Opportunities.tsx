@@ -14,6 +14,7 @@ import {
   type OpportunityKind,
 } from '@/lib/seo/opportunityTypes'
 import type { Page, SeoOpportunity } from '@/lib/database.types'
+import { AiFixSuggestion } from '@/components/AiFixSuggestion'
 import { GoogleConnectionCard } from '@/components/google/GoogleConnectionCard'
 import { RescanButton } from '@/components/google/RescanButton'
 import { EmptyState } from '@/components/EmptyState'
@@ -305,6 +306,15 @@ function OpportunityList({
                   ))}
                 </ul>
               </div>
+
+              <AiFixSuggestion
+                projectId={projectId}
+                keyword={o.keyword}
+                kind={o.kind}
+                headline={o.headline}
+                actions={o.actions}
+                page={o.page}
+              />
 
               {page ? (
                 <Link

@@ -21,7 +21,7 @@ vi.mock('@/lib/supabase', () => ({
   },
 }))
 
-const { startCrawl } = await import('./edgeFunctions')
+const { startCrawl, checkAiConfigured, suggestFix } = await import('./edgeFunctions')
 
 function workerStopped() {
   return { data: null, error: new FunctionsHttpError({ status: 546 }) }
@@ -131,3 +131,73 @@ describe('startCrawl', () => {
     expect(error).toContain('Edge Function "crawl-site"')
   })
 })
+
+describe('checkAiConfigured', () => {
+  beforeEach(() => {
+    invoke.mockReset()
+  })
+
+  it('reports whether the assistant has a key set, without asking it anything', async () => {
+    invoke.mockResolvedValue({ data: { configured: true }, error: null })
+
+    expect(await checkAiConfigured()).toBe(true)
+    expect(invoke).toHaveBeenCalledWith('ai-assistant', { body: { action: 'status' } })
+  })
+
+  it('defaults to false when the function is unreachable', async () => {
+    invoke.mockResolvedValue({ data: null, error: new FunctionsHttpError({ status: 404 }) })
+
+    expect(await checkAiConfigured()).toBe(false)
+  })
+})
+
+describe('suggestFix', () => {
+  const opportunity = { keyword: 'tavolo da gioco', kind: 'ctr_gap', headline: 'h', actions: ['a'], page: 'https://x/p' }
+
+  beforeEach(() => {
+    invoke.mockReset()
+  })
+
+  it('returns the grounded fix the AI proposed', async () => {
+    invoke.mockResolvedValue({
+      data: { configured: true, fix: { title: 'Titolo', meta_description: 'Descrizione', notes: 'Nota' } },
+      error: null,
+    })
+
+    const result = await suggestFix('p1', opportunity)
+
+    expect(result).toEqual({
+      configured: true,
+      error: null,
+      fix: { title: 'Titolo', metaDescription: 'Descrizione', notes: 'Nota' },
+    })
+    expect(invoke).toHaveBeenCalledWith('ai-assistant', {
+      body: {
+        action: 'suggest_fix',
+        project_id: 'p1',
+        keyword: 'tavolo da gioco',
+        kind: 'ctr_gap',
+        headline: 'h',
+        actions: ['a'],
+        page_url: 'https://x/p',
+      },
+    })
+  })
+
+  it('reports not configured rather than an error when no key is set', async () => {
+    invoke.mockResolvedValue({ data: { configured: false }, error: null })
+
+    expect(await suggestFix('p1', opportunity)).toEqual({ configured: false, fix: null, error: null })
+  })
+
+  it('surfaces a server-side failure without pretending a fix was returned', async () => {
+    invoke.mockResolvedValue({ data: { configured: true, error: 'AI provider error: 529' }, error: null })
+
+    expect(await suggestFix('p1', opportunity)).toEqual({
+      configured: true,
+      fix: null,
+      error: 'AI provider error: 529',
+    })
+  })
+})
+
