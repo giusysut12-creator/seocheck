@@ -272,26 +272,67 @@ export async function checkAiConfigured(): Promise<boolean> {
   return data?.configured ?? false
 }
 
+/** One ready-to-paste section added to a thin page. */
+export interface ContentAddition {
+  heading: string
+  paragraph: string
+}
+
+/** A link to add on another real page of the site, pointing at this one. */
+export interface InternalLinkSuggestion {
+  /** Always a page the crawler actually found — never invented by the AI. */
+  fromUrl: string
+  anchorText: string
+  reason: string
+}
+
+/** What the AI did about one item of the opportunity's to-do list. */
+export interface FixStep {
+  /** The to-do item verbatim, so the user can see the list is fully covered. */
+  action: string
+  /** 'ai' = text is ready; 'tu' = needs your decision; 'non_applicabile' = already fine. */
+  done: 'ai' | 'tu' | 'non_applicabile'
+  detail: string
+}
+
 export interface SuggestedFix {
   /** Omitted by the AI when a rewrite isn't warranted or safe — never invented. */
   title: string | null
   metaDescription: string | null
+  /** Suggested page heading, when the to-do list covers the H1. */
+  h1: string | null
+  /** Empty when the page's real text wasn't known well enough to extend it. */
+  contentAdditions: ContentAddition[]
+  internalLinks: InternalLinkSuggestion[]
+  /** One entry per to-do item, in the order the opportunity listed them. */
+  steps: FixStep[]
   /** What changed and why, or the decision the user still needs to make. */
   notes: string
 }
 
 interface SuggestFixResponse {
   configured: boolean
-  fix?: { title?: string | null; meta_description?: string | null; notes?: string }
+  fix?: {
+    title?: string | null
+    meta_description?: string | null
+    h1?: string | null
+    content_additions?: { heading: string; paragraph: string }[]
+    internal_links?: { from_url: string; anchor_text: string; reason: string }[]
+    steps?: { action: string; done: string; detail: string }[]
+    notes?: string
+  }
   error?: string
 }
 
 /**
- * Asks the AI assistant for a ready-to-paste title/meta description for one
- * SEO Opportunity, grounded in that page's real crawled facts. This never
- * touches the user's site — it only returns text for them to copy in
- * themselves, since applying it automatically would need write access to
- * their CMS that this app does not have.
+ * Asks the AI assistant to work through every item of one SEO Opportunity's
+ * to-do list, grounded in that page's real crawled facts and text, and return
+ * the resulting title, meta description, H1, content sections and internal
+ * links.
+ *
+ * This call itself never touches the user's site: publishing is a separate,
+ * explicitly confirmed step (see src/lib/wordpress.ts), and only covers the
+ * two fields that are safe to overwrite automatically.
  */
 export async function suggestFix(
   projectId: string,
@@ -326,6 +367,18 @@ export async function suggestFix(
     fix: {
       title: data.fix?.title ?? null,
       metaDescription: data.fix?.meta_description ?? null,
+      h1: data.fix?.h1 ?? null,
+      contentAdditions: data.fix?.content_additions ?? [],
+      internalLinks: (data.fix?.internal_links ?? []).map((l) => ({
+        fromUrl: l.from_url,
+        anchorText: l.anchor_text,
+        reason: l.reason,
+      })),
+      steps: (data.fix?.steps ?? []).map((st) => ({
+        action: st.action,
+        done: st.done === 'ai' || st.done === 'non_applicabile' ? st.done : ('tu' as const),
+        detail: st.detail,
+      })),
       notes: data.fix?.notes ?? '',
     },
     error: null,

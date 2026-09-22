@@ -110,13 +110,19 @@ RLS) after independently verifying the caller owns the project.
     Messages API) with a system prompt that forbids inventing data and
     requires citing the metrics used.
   - `POST { action: 'suggest_fix', project_id, keyword, kind, headline, actions, page_url }`
-    — writes a ready-to-paste title tag and meta description for one SEO
-    Opportunity, grounded in that page's real crawled title/meta/H1 (via a
-    forced tool call, so the response is always structured). It only returns
-    text for the user to paste into their own site — it never writes to it,
-    since that would need write access to the user's CMS that this function
-    does not have. `src/components/AiFixSuggestion.tsx` is the "Genera
-    correzione con AI" button on each opportunity card.
+    — works through *every* item of that opportunity's to-do list (`actions`)
+    and returns the text that satisfies each: title tag, meta description,
+    H1, ready-to-paste content sections and internal links, plus one `steps`
+    entry per item saying what was produced or what the user must still
+    decide. Grounded in that page's real crawled title/meta/H1 and
+    `content_excerpt` (via a forced tool call, so the response is always
+    structured); suggested internal links are filtered against real crawled
+    pages, so the AI cannot invent a URL. When the crawler hasn't reached the
+    page, it says so rather than inventing its content.
+    `src/components/AiFixSuggestion.tsx` is the "Genera correzione con AI"
+    button on each opportunity card. This function never writes to the user's
+    site; publishing is a separate, explicitly confirmed step handled by
+    `wordpress-connect`, and covers only the title and meta description.
   Returns `{ configured: false }` when `AI_API_KEY` is unset.
 - **`wordpress-connect`** — `POST { action, project_id, ... }`, actions
   `status | connect | disconnect`. Phase 1 of "Applica al sito": stores a

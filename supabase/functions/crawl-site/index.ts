@@ -211,11 +211,23 @@ export interface ParsedPage {
   canonical: string | null
   robotsMeta: string | null
   wordCount: number
+  /**
+   * The start of the page's visible text. Kept because every recommendation
+   * about the *content* of a page — deepen it, cover a question it misses —
+   * is otherwise written blind: a word count says a product page is thin
+   * without saying what it already claims, and an AI asked to improve it
+   * from the title alone invents materials, sizes and licences. Bounded,
+   * since only the opening matters for judging what a page is about.
+   */
+  contentExcerpt: string
   internalLinks: string[]
   externalLinks: string[]
   imagesMissingAlt: number
   imagesTotal: number
 }
+
+/** How much visible text to keep per page. */
+const CONTENT_EXCERPT_CHARS = 1500
 
 function decodeEntities(str: string): string {
   return str
@@ -263,9 +275,9 @@ export function parseHtml(html: string, pageUrl: string): ParsedPage {
   const bodyMatch = /<body[^>]*>([\s\S]*)<\/body>/i.exec(html)
   const bodyHtml = bodyMatch ? bodyMatch[1] : html
   const textOnly = stripTags(bodyHtml.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, ''))
-  const wordCount = decodeEntities(textOnly)
-    .split(/\s+/)
-    .filter(Boolean).length
+  const visibleText = decodeEntities(textOnly).replace(/\s+/g, ' ').trim()
+  const wordCount = visibleText.split(/\s+/).filter(Boolean).length
+  const contentExcerpt = visibleText.slice(0, CONTENT_EXCERPT_CHARS)
 
   const base = safeUrl(pageUrl)
   const hrefs = matchAll(/<a\s[^>]*href=["']([^"'#][^"']*)["'][^>]*>/gi, html)
@@ -294,6 +306,7 @@ export function parseHtml(html: string, pageUrl: string): ParsedPage {
     canonical,
     robotsMeta,
     wordCount,
+    contentExcerpt,
     internalLinks: Array.from(new Set(internalLinks)),
     externalLinks: Array.from(new Set(externalLinks)),
     imagesMissingAlt,
@@ -402,6 +415,17 @@ export interface CrawledPageResult {
   robotsMeta: string | null
   isHttps: boolean
   wordCount: number
+  /**
+   * The start of the page's visible text. Absent unless HTML was parsed —
+   * a redirect or a 404 has no content, and an empty string would read like
+   * "this page is blank" rather than "nothing was read".
+   *
+   * Stored so the AI can rewrite a thin page from what it actually says. A
+   * word count alone tells us a page is thin without telling us what it
+   * claims, and an assistant asked to improve it from the title invents
+   * materials, sizes and licences.
+   */
+  contentExcerpt?: string
   internalLinksCount: number
   externalLinksCount: number
   imagesMissingAlt: number
@@ -1381,6 +1405,7 @@ Deno.serve(async (req) => {
               robotsMeta: parsed.robotsMeta,
               isHttps: safeUrl(url)?.protocol === 'https:',
               wordCount: parsed.wordCount,
+              contentExcerpt: parsed.contentExcerpt,
               internalLinksCount: parsed.internalLinks.length,
               externalLinksCount: parsed.externalLinks.length,
               imagesMissingAlt: parsed.imagesMissingAlt,
@@ -1625,6 +1650,7 @@ function toPageRow(projectId: string, domainId: string | null, r: CrawledPageRes
     is_indexable: !(r.robotsMeta?.includes('noindex') ?? false),
     is_https: r.isHttps,
     word_count: r.wordCount,
+    content_excerpt: r.contentExcerpt ?? null,
     internal_links_count: r.internalLinksCount,
     external_links_count: r.externalLinksCount,
     images_missing_alt_count: r.imagesMissingAlt,

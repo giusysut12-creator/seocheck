@@ -4,10 +4,12 @@
 // neither ever invents a metric, keyword, or ranking that isn't present:
 //
 //   action: 'ask'          Answers a free-form question about the project.
-//   action: 'suggest_fix'  Writes a ready-to-paste title tag and meta
-//                          description for one SEO Opportunity, so the user
-//                          can copy it straight into their site instead of
-//                          only reading a generic recommendation.
+//   action: 'suggest_fix'  Works through every item in one SEO Opportunity's
+//                          to-do list and produces the actual text for each —
+//                          title tag, meta description, H1, new content
+//                          sections, internal links — so the user can apply
+//                          them instead of only reading a generic
+//                          recommendation.
 //
 // 'suggest_fix' never touches the user's website — it returns text for the
 // user to paste themselves. Auto-applying a fix to a live site would need
@@ -60,7 +62,13 @@ interface RequestBody {
   competing_pages?: CompetingPage[]
 }
 
-async function callClaude(systemPrompt: string, userMessage: string, tools?: unknown[], toolChoice?: unknown) {
+async function callClaude(
+  systemPrompt: string,
+  userMessage: string,
+  tools?: unknown[],
+  toolChoice?: unknown,
+  maxTokens = 1024,
+) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -70,7 +78,7 @@ async function callClaude(systemPrompt: string, userMessage: string, tools?: unk
     },
     body: JSON.stringify({
       model: AI_MODEL,
-      max_tokens: 1024,
+      max_tokens: maxTokens,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
       ...(tools ? { tools, tool_choice: toolChoice } : {}),
@@ -136,19 +144,63 @@ async function handleAsk(db: ReturnType<typeof createClient>, projectId: string,
   return jsonResponse({ configured: true, answer })
 }
 
-/**
- * Writes a ready-to-paste title tag and meta description for one SEO
- * Opportunity. Grounded in the page's actual crawled title/meta/H1 when the
- * crawler has reached that URL, so the rewrite is a real edit of what's
- * there rather than an invention. Forced into a tool call (rather than free
- * text) so the result is always structured, not text to parse out of a
- * paragraph.
- */
+/** What the crawler knows about the page an opportunity points at. */
 interface PageFacts {
   title: string | null
   meta_description: string | null
   h1: string | null
   word_count: number | null
+  /**
+   * The start of the page's real visible text, from the crawler. Without it
+   * a to-do like "approfondisci il contenuto" can only be answered by
+   * inventing what the page sells — materials, sizes, licences — which on a
+   * live shop is worse than saying nothing.
+   */
+  content_excerpt: string | null
+}
+
+/** A real crawled page of this project, offered as a place to link FROM. */
+interface LinkCandidate {
+  url: string
+  title: string | null
+}
+
+/**
+ * Real pages of this project that plausibly relate to the keyword, so an
+ * "add internal links" recommendation can name URLs that exist instead of
+ * URLs that sound right. Matching is deliberately crude — the model decides
+ * which candidates are actually relevant — but every candidate is a page the
+ * crawler really fetched.
+ */
+async function findLinkCandidates(
+  db: ReturnType<typeof createClient>,
+  projectId: string,
+  keyword: string,
+  excludeUrl: string | null,
+): Promise<LinkCandidate[]> {
+  // The ilike patterns are built from the keyword, so anything that could
+  // change the meaning of a PostgREST filter (commas, dots, parentheses,
+  // wildcards) is dropped rather than escaped.
+  const words = keyword
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w.length >= 4)
+    .slice(0, 3)
+  if (words.length === 0) return []
+
+  const { data } = await db
+    .from('pages')
+    .select('url, title, word_count')
+    .eq('project_id', projectId)
+    .eq('is_indexable', true)
+    .or(words.map((w) => `title.ilike.%${w}%`).join(','))
+    .order('word_count', { ascending: false })
+    .limit(12)
+
+  const excluded = excludeUrl ? normalizeUrl(excludeUrl) : null
+  return ((data as { url: string; title: string | null }[] | null) ?? [])
+    .filter((p) => normalizeUrl(p.url) !== excluded)
+    .map((p) => ({ url: p.url, title: p.title }))
 }
 
 /**
@@ -168,6 +220,15 @@ function normalizeUrl(url: string): string {
     .replace(/\/+$/, '')
 }
 
+/**
+ * Works through an opportunity's whole to-do list and returns the text that
+ * satisfies each item. Grounded in the page's actual crawled title, meta,
+ * H1 and visible text when the crawler has reached that URL, so a rewrite
+ * is a real edit of what's there rather than an invention — and when it
+ * hasn't, the model is told to say so instead of filling the gap. Forced
+ * into a tool call (rather than free text) so the result is always
+ * structured, not text to parse out of a paragraph.
+ */
 async function handleSuggestFix(
   db: ReturnType<typeof createClient>,
   projectId: string,
@@ -185,7 +246,7 @@ async function handleSuggestFix(
   if (input.pageUrl) {
     const { data } = await db
       .from('pages')
-      .select('title, meta_description, h1, word_count')
+      .select('title, meta_description, h1, word_count, content_excerpt')
       .eq('project_id', projectId)
       .eq('url_normalized', normalizeUrl(input.pageUrl))
       .maybeSingle()
@@ -211,6 +272,11 @@ async function handleSuggestFix(
     }))
   }
 
+  // Only worth the extra query when the to-do list actually asks for links.
+  const wantsInternalLinks = input.actions.some((a) => /link interni|internal link|collegamenti interni/i.test(a))
+  const linkCandidates =
+    wantsInternalLinks && pageFacts ? await findLinkCandidates(db, projectId, input.keyword, input.pageUrl) : []
+
   const context = {
     project: { domain: project.domain, country: project.country },
     opportunity: { kind: input.kind, keyword: input.keyword, headline: input.headline, suggested_actions: input.actions },
@@ -221,11 +287,13 @@ async function handleSuggestFix(
           current_meta_description: pageFacts.meta_description,
           current_h1: pageFacts.h1,
           word_count: pageFacts.word_count,
+          current_content_excerpt: pageFacts.content_excerpt,
         }
       : input.pageUrl
         ? `No crawled data yet for ${input.pageUrl} — run a Site Audit so its current title/meta/H1 are known before rewriting them.`
         : 'This opportunity is not tied to one specific page.',
     competing_pages: competingPageFacts.length > 0 ? competingPageFacts : undefined,
+    internal_link_candidates: linkCandidates.length > 0 ? linkCandidates : undefined,
   }
 
   const systemPrompt =
@@ -235,9 +303,30 @@ async function handleSuggestFix(
     'invent search volume, rankings, or page content that is not given to you. ' +
     'If page data says nothing was crawled yet, do not invent a title or meta description: leave both fields out ' +
     'and use notes to say a Site Audit is needed first. ' +
-    'Otherwise write a title of roughly 50-60 characters and a meta description of roughly 120-155 characters, ' +
-    'building on the real current_title/current_meta_description/current_h1 rather than starting from nothing, ' +
-    'and keep the keyword near the front of the title. ' +
+    // The whole point of this action: the user reads a to-do list and wants
+    // the work done, not restated. Every item must come back with the actual
+    // text that satisfies it, or an honest reason why it cannot.
+    'suggested_actions is a to-do list. You must return one entry in steps for EVERY item, in the same order, ' +
+    'copying the item verbatim into action. Each entry must carry the work itself, not a restatement of the task: ' +
+    'never answer "ottimizza il titolo" with "ho ottimizzato il titolo" — say what you wrote and why it is better. ' +
+    'Set done to "ai" when you have produced everything needed (the text is in your other fields or in detail), ' +
+    'and "tu" when applying it needs a decision or an action only the user can take (choosing which page to ' +
+    'redirect, adding a photo, changing a price) — then detail must say exactly what to do, step by step. ' +
+    'Use "non_applicabile" only when the data shows the item is already satisfied, and say what shows it.\n\n' +
+    'FIELD RULES\n' +
+    'title: roughly 50-60 characters, keyword near the front, building on the real current_title rather than ' +
+    'starting from nothing. meta_description: roughly 120-155 characters, building on current_meta_description. ' +
+    'h1: only when the to-do list asks about the H1, or current_h1 is missing, empty or just the bare product ' +
+    'name; it should read as a page heading for a human, not as a title tag, and must differ from title. ' +
+    'content_additions: only when a to-do item asks to expand, deepen or enrich the content. Each entry is a ' +
+    'ready-to-paste section with a heading and a paragraph of 40-90 words. Write them from ' +
+    "current_content_excerpt — the page's real text — extending what it already says. NEVER state a material, " +
+    'size, capacity, price, licence, brand, shipping term or compatibility that is not in that excerpt: on a real ' +
+    'shop an invented detail is a false product claim. If current_content_excerpt is missing or too short to tell ' +
+    "you what the page sells, return no content_additions and use that step's detail to say which facts you need. " +
+    'internal_links: only from URLs listed in internal_link_candidates, never invented ones, and only where the ' +
+    'link makes sense for a reader; if internal_link_candidates is absent or nothing fits, say so in the step ' +
+    'instead of inventing URLs.\n\n' +
     'For a "cannibalization" opportunity, do NOT write the same generic snippet rewrite you would for a plain CTR ' +
     "opportunity on that page — that ignores the actual problem. competing_pages lists every one of the project's " +
     'own pages ranking for this keyword, each with its current title where known. Use notes to name the specific ' +
@@ -255,33 +344,115 @@ async function handleSuggestFix(
   const tools = [
     {
       name: 'propose_fix',
-      description: 'Propose a ready-to-paste on-page fix for this SEO opportunity.',
+      description: "Carry out every item in this SEO opportunity's to-do list and return the resulting text.",
       input_schema: {
         type: 'object',
         properties: {
           title: { type: 'string', description: 'Suggested <title> tag in Italian, ~50-60 characters. Omit if not applicable.' },
           meta_description: { type: 'string', description: 'Suggested meta description in Italian, ~120-155 characters. Omit if not applicable.' },
+          h1: { type: 'string', description: 'Suggested H1 heading in Italian, written for a reader. Omit unless the H1 is part of the fix.' },
+          content_additions: {
+            type: 'array',
+            description:
+              "Ready-to-paste sections extending the page's existing text. Omit entirely unless a to-do item asks to expand the content, and never include a fact absent from current_content_excerpt.",
+            items: {
+              type: 'object',
+              properties: {
+                heading: { type: 'string', description: 'Section heading in Italian (an H2 on the page).' },
+                paragraph: { type: 'string', description: "Section body in Italian, 40-90 words, grounded in the page's real text." },
+              },
+              required: ['heading', 'paragraph'],
+            },
+          },
+          internal_links: {
+            type: 'array',
+            description: 'Links to add pointing at this page. from_url must be copied exactly from internal_link_candidates.',
+            items: {
+              type: 'object',
+              properties: {
+                from_url: { type: 'string', description: 'The candidate page the link is added to, copied verbatim.' },
+                anchor_text: { type: 'string', description: 'The clickable text in Italian.' },
+                reason: { type: 'string', description: 'One short sentence in Italian: why this link helps a reader.' },
+              },
+              required: ['from_url', 'anchor_text'],
+            },
+          },
+          steps: {
+            type: 'array',
+            description: 'One entry for EVERY item in suggested_actions, in the same order.',
+            items: {
+              type: 'object',
+              properties: {
+                action: { type: 'string', description: 'The to-do item, copied verbatim from suggested_actions.' },
+                done: {
+                  type: 'string',
+                  enum: ['ai', 'tu', 'non_applicabile'],
+                  description:
+                    'ai = the text is ready above or in detail; tu = needs a human decision or action; non_applicabile = already satisfied.',
+                },
+                detail: {
+                  type: 'string',
+                  description: 'In Italian: what you wrote for this item and why, or the exact steps for the user to follow.',
+                },
+              },
+              required: ['action', 'done', 'detail'],
+            },
+          },
           notes: { type: 'string', description: 'One or two sentences in Italian: what changed and why, or what decision the user still needs to make.' },
         },
-        required: ['notes'],
+        required: ['notes', 'steps'],
       },
     },
   ]
 
-  const json = await callClaude(systemPrompt, 'Genera la correzione per questa opportunità.', tools, {
-    type: 'tool',
-    name: 'propose_fix',
-  })
+  const json = await callClaude(
+    systemPrompt,
+    'Esegui tutte le voci della lista "cosa fare" per questa opportunità.',
+    tools,
+    { type: 'tool', name: 'propose_fix' },
+    // A full plan — title, meta, H1, new sections, links and one entry per
+    // to-do item — does not fit in the 1024 tokens a snippet rewrite needed,
+    // and a truncated tool call arrives as no fix at all.
+    3072,
+  )
 
   const toolUse = json.content?.find((c: { type?: string; name?: string }) => c.type === 'tool_use' && c.name === 'propose_fix')
   if (!toolUse) return jsonResponse({ configured: true, error: "L'AI non ha restituito una correzione strutturata." }, 200)
 
-  const result = toolUse.input as { title?: string; meta_description?: string; notes?: string }
+  const result = toolUse.input as {
+    title?: string
+    meta_description?: string
+    h1?: string
+    content_additions?: { heading?: string; paragraph?: string }[]
+    internal_links?: { from_url?: string; anchor_text?: string; reason?: string }[]
+    steps?: { action?: string; done?: string; detail?: string }[]
+    notes?: string
+  }
+
+  // A suggested link is only usable if it points at a page the crawler really
+  // found. The prompt says to copy from internal_link_candidates; this drops
+  // anything that didn't, rather than trusting it.
+  const candidateUrls = new Set(linkCandidates.map((c) => c.url))
+
   return jsonResponse({
     configured: true,
     fix: {
       title: result.title ?? null,
       meta_description: result.meta_description ?? null,
+      h1: result.h1 ?? null,
+      content_additions: (result.content_additions ?? [])
+        .filter((c) => c.heading && c.paragraph)
+        .map((c) => ({ heading: c.heading!, paragraph: c.paragraph! })),
+      internal_links: (result.internal_links ?? [])
+        .filter((l) => l.from_url && l.anchor_text && candidateUrls.has(l.from_url))
+        .map((l) => ({ from_url: l.from_url!, anchor_text: l.anchor_text!, reason: l.reason ?? '' })),
+      steps: (result.steps ?? [])
+        .filter((st) => st.action && st.detail)
+        .map((st) => ({
+          action: st.action!,
+          done: st.done === 'ai' || st.done === 'non_applicabile' ? st.done : 'tu',
+          detail: st.detail!,
+        })),
       notes: result.notes ?? '',
     },
   })

@@ -184,7 +184,15 @@ describe('suggestFix', () => {
     expect(result).toEqual({
       configured: true,
       error: null,
-      fix: { title: 'Titolo', metaDescription: 'Descrizione', notes: 'Nota' },
+      fix: {
+        title: 'Titolo',
+        metaDescription: 'Descrizione',
+        h1: null,
+        contentAdditions: [],
+        internalLinks: [],
+        steps: [],
+        notes: 'Nota',
+      },
     })
     expect(invoke).toHaveBeenCalledWith('ai-assistant', {
       body: {
@@ -197,6 +205,51 @@ describe('suggestFix', () => {
         page_url: 'https://x/p',
       },
     })
+  })
+
+  it('carries every part of the plan through, not just the snippet fields', async () => {
+    // The opportunity's to-do list asks for more than a title rewrite; if the
+    // client dropped these, the user would be back to reading advice instead
+    // of receiving the work.
+    invoke.mockResolvedValue({
+      data: {
+        configured: true,
+        fix: {
+          title: 'Titolo',
+          h1: 'Zaino Sailor Moon',
+          content_additions: [{ heading: 'Dettagli', paragraph: 'Testo reale.' }],
+          internal_links: [{ from_url: 'https://x/altra', anchor_text: 'zaino', reason: 'correlato' }],
+          steps: [{ action: 'Approfondisci il contenuto', done: 'ai', detail: 'Ho scritto una sezione.' }],
+          notes: 'Nota',
+        },
+      },
+      error: null,
+    })
+
+    const { fix } = await suggestFix('p1', opportunity)
+
+    expect(fix?.h1).toBe('Zaino Sailor Moon')
+    expect(fix?.contentAdditions).toEqual([{ heading: 'Dettagli', paragraph: 'Testo reale.' }])
+    expect(fix?.internalLinks).toEqual([{ fromUrl: 'https://x/altra', anchorText: 'zaino', reason: 'correlato' }])
+    expect(fix?.steps).toEqual([
+      { action: 'Approfondisci il contenuto', done: 'ai', detail: 'Ho scritto una sezione.' },
+    ])
+  })
+
+  it('treats an unrecognised step status as needing the user, never as done', async () => {
+    // Showing a green "done" for something nobody did is the one failure mode
+    // here that leaves a real page unfixed while looking fixed.
+    invoke.mockResolvedValue({
+      data: {
+        configured: true,
+        fix: { steps: [{ action: 'Aggiungi foto', done: 'partially', detail: 'Serve una tua foto.' }], notes: '' },
+      },
+      error: null,
+    })
+
+    const { fix } = await suggestFix('p1', opportunity)
+
+    expect(fix?.steps[0].done).toBe('tu')
   })
 
   it('reports not configured rather than an error when no key is set', async () => {

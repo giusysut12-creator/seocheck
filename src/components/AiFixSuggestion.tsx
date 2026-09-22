@@ -1,19 +1,23 @@
 import * as React from 'react'
-import { Check, Copy, Loader2, Sparkles, UploadCloud } from 'lucide-react'
-import { suggestFix, type SuggestedFix } from '@/lib/edgeFunctions'
+import { Check, Copy, ExternalLink, Hand, Loader2, Minus, Sparkles, UploadCloud } from 'lucide-react'
+import { suggestFix, type FixStep, type SuggestedFix } from '@/lib/edgeFunctions'
 import { applyFix, previewFix, type FixPreview } from '@/lib/wordpress'
 import { Button } from '@/components/ui/button'
 
 /**
- * Turns a generic opportunity recommendation into the rewritten title and
- * meta description themselves — copyable, and publishable straight to
- * WordPress when the project has a connection.
+ * Turns an opportunity's "cosa fare" list into the work itself: the AI goes
+ * through every item and comes back with the actual text — title, meta
+ * description, H1, new content sections, internal links — plus a line per
+ * item saying what it produced or what is left for the user to decide.
  *
  * Generating never touches the site: it only reads what the crawler already
  * found. Publishing does write, and is gated behind its own explicit
  * confirmation showing which entity matched (see PublishToWordPress below),
  * because a wrong match on a live shop is expensive and not obviously
- * reversible.
+ * reversible. Only the title and meta description are published that way:
+ * they live in Google's results, so a bad one is visible and reverted in a
+ * click. Rewriting the body of a product page is not reversible in the same
+ * way, so those sections are handed over as text for the user to place.
  */
 export function AiFixSuggestion({
   projectId,
@@ -112,17 +116,77 @@ export function AiFixSuggestion({
     )
   }
 
+  const done = fix!
   return (
-    <div className="space-y-2 rounded-md border border-accent/30 bg-accent/5 p-3">
-      {fix!.title && <CopyField label="Titolo suggerito" value={fix!.title} />}
-      {fix!.metaDescription && <CopyField label="Meta description suggerita" value={fix!.metaDescription} />}
-      {fix!.notes && <p className="text-xs text-muted-foreground">{fix!.notes}</p>}
-      {page && (fix!.title || fix!.metaDescription) ? (
+    <div className="space-y-3 rounded-md border border-accent/30 bg-accent/5 p-3">
+      {done.steps.length > 0 && <StepList steps={done.steps} />}
+
+      {(done.title || done.metaDescription || done.h1) && (
+        <div className="space-y-2">
+          {done.title && <CopyField label="Titolo suggerito" value={done.title} />}
+          {done.metaDescription && <CopyField label="Meta description suggerita" value={done.metaDescription} />}
+          {done.h1 && <CopyField label="H1 suggerito (titolo visibile sulla pagina)" value={done.h1} />}
+        </div>
+      )}
+
+      {done.contentAdditions.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Testo da aggiungere alla pagina
+          </p>
+          {done.contentAdditions.map((section, i) => (
+            <div key={i} className="rounded-md border border-border bg-background/60 p-2.5">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm font-medium text-foreground">{section.heading}</p>
+                <CopyButton value={`${section.heading}\n\n${section.paragraph}`} />
+              </div>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{section.paragraph}</p>
+            </div>
+          ))}
+          <p className="text-[11px] text-muted-foreground">
+            Incolla queste sezioni nella descrizione del prodotto su WordPress. Non le pubblico in automatico: il
+            contenuto della pagina è tuo e va riletto prima di andare online.
+          </p>
+        </div>
+      )}
+
+      {done.internalLinks.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Link interni da aggiungere
+          </p>
+          {done.internalLinks.map((link, i) => (
+            <div key={i} className="rounded-md border border-border bg-background/60 p-2.5">
+              <p className="text-xs text-foreground">
+                Nella pagina{' '}
+                <a
+                  href={link.fromUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 underline decoration-dotted underline-offset-2"
+                >
+                  {shortUrl(link.fromUrl)} <ExternalLink className="size-3" />
+                </a>{' '}
+                aggiungi un link con testo:
+              </p>
+              <div className="mt-1 flex items-start justify-between gap-2">
+                <p className="text-sm text-foreground">«{link.anchorText}»</p>
+                <CopyButton value={link.anchorText} />
+              </div>
+              {link.reason && <p className="mt-1 text-[11px] text-muted-foreground">{link.reason}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {done.notes && <p className="text-xs text-muted-foreground">{done.notes}</p>}
+
+      {page && (done.title || done.metaDescription) ? (
         <PublishToWordPress
           projectId={projectId}
           pageUrl={page}
-          title={fix!.title}
-          metaDescription={fix!.metaDescription}
+          title={done.title}
+          metaDescription={done.metaDescription}
         />
       ) : (
         <p className="text-[11px] text-muted-foreground">
@@ -131,6 +195,46 @@ export function AiFixSuggestion({
       )}
     </div>
   )
+}
+
+/**
+ * The to-do list, answered item by item. Showing the user's original wording
+ * back with what was produced for it is how they can tell the list was
+ * covered — and which items still need them.
+ */
+function StepList({ steps }: { steps: FixStep[] }) {
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Cosa ho fatto</p>
+      <ul className="space-y-1.5">
+        {steps.map((step, i) => (
+          <li key={i} className="flex items-start gap-2">
+            <StepIcon done={step.done} />
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-foreground">{step.action}</p>
+              <p className="text-xs text-muted-foreground">{step.detail}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function StepIcon({ done }: { done: FixStep['done'] }) {
+  if (done === 'ai') return <Check className="mt-0.5 size-3.5 shrink-0 text-success" aria-label="Fatto dall'AI" />
+  if (done === 'non_applicabile')
+    return <Minus className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-label="Già a posto" />
+  return <Hand className="mt-0.5 size-3.5 shrink-0 text-warning" aria-label="Da fare tu" />
+}
+
+/** Shortens a URL to its path, so a list of links stays readable. */
+function shortUrl(url: string): string {
+  try {
+    return new URL(url).pathname
+  } catch {
+    return url
+  }
 }
 
 /**
@@ -243,6 +347,18 @@ function PublishToWordPress({
 }
 
 function CopyField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <div className="mt-0.5 flex items-start justify-between gap-2">
+        <p className="text-sm text-foreground">{value}</p>
+        <CopyButton value={value} />
+      </div>
+    </div>
+  )
+}
+
+function CopyButton({ value }: { value: string }) {
   const [copied, setCopied] = React.useState(false)
 
   async function copy() {
@@ -257,15 +373,9 @@ function CopyField({ label, value }: { label: string; value: string }) {
   }
 
   return (
-    <div>
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-      <div className="mt-0.5 flex items-start justify-between gap-2">
-        <p className="text-sm text-foreground">{value}</p>
-        <Button variant="ghost" size="sm" className="shrink-0" onClick={copy}>
-          {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
-          {copied ? 'Copiato' : 'Copia'}
-        </Button>
-      </div>
-    </div>
+    <Button variant="ghost" size="sm" className="shrink-0" onClick={copy}>
+      {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
+      {copied ? 'Copiato' : 'Copia'}
+    </Button>
   )
 }
