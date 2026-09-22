@@ -288,6 +288,12 @@ async function handleSuggestFix(
           current_h1: pageFacts.h1,
           word_count: pageFacts.word_count,
           current_content_excerpt: pageFacts.content_excerpt,
+          // The page predates the crawler storing page text. Saying so here
+          // is what stops the model guessing why it has nothing to work
+          // with — and a re-scan really does fix it.
+          content_unavailable_reason: pageFacts.content_excerpt
+            ? undefined
+            : 'This page was crawled before the crawler started storing page text. Re-running the Site Audit will make the real text available.',
         }
       : input.pageUrl
         ? `No crawled data yet for ${input.pageUrl} — run a Site Audit so its current title/meta/H1 are known before rewriting them.`
@@ -299,6 +305,16 @@ async function handleSuggestFix(
   const systemPrompt =
     'You write ready-to-paste on-page SEO fixes for an Italian e-commerce site, inside an SEO dashboard. ' +
     'Write every piece of output text in Italian. ' +
+    // The reader is the shop owner, not a developer: they are looking at a
+    // card in a dashboard, not at the JSON below. Field names leaking into
+    // the text read as an error message and tell them nothing they can act
+    // on.
+    'You are writing to the shop owner, who is not technical and cannot see the data below. Address them directly ' +
+    'as "tu". NEVER name a field, a key or a variable from the JSON (current_content_excerpt, current_title, ' +
+    'word_count and the like), and never say a value is "null", "vuoto" or "mancante" — say in plain Italian what ' +
+    'is missing and what to do about it. If content_unavailable_reason is present, the remedy is to re-run the ' +
+    'site scan ("rilancia la scansione del sito dalla scheda Controllo del sito"), so say that instead of asking ' +
+    'the owner to send you the page text. ' +
     'You must call the propose_fix tool exactly once. Ground everything ONLY in the JSON data below — never ' +
     'invent search volume, rankings, or page content that is not given to you. ' +
     'If page data says nothing was crawled yet, do not invent a title or meta description: leave both fields out ' +
@@ -323,7 +339,8 @@ async function handleSuggestFix(
     "current_content_excerpt — the page's real text — extending what it already says. NEVER state a material, " +
     'size, capacity, price, licence, brand, shipping term or compatibility that is not in that excerpt: on a real ' +
     'shop an invented detail is a false product claim. If current_content_excerpt is missing or too short to tell ' +
-    "you what the page sells, return no content_additions and use that step's detail to say which facts you need. " +
+    'you what the page sells, return no content_additions and use that step\'s detail to say, in the owner\'s own ' +
+    'terms, what is missing and how to get it. ' +
     'internal_links: only from URLs listed in internal_link_candidates, never invented ones, and only where the ' +
     'link makes sense for a reader; if internal_link_candidates is absent or nothing fits, say so in the step ' +
     'instead of inventing URLs.\n\n' +
