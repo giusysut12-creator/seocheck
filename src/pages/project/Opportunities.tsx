@@ -14,6 +14,7 @@ import {
   type OpportunityKind,
 } from '@/lib/seo/opportunityTypes'
 import type { Page, SeoOpportunity } from '@/lib/database.types'
+import { appliedFixKey, fetchAppliedFixes, type AppliedFix } from '@/lib/appliedFixes'
 import { AiFixSuggestion } from '@/components/AiFixSuggestion'
 import { WordPressConnectionCard } from '@/components/WordPressConnectionCard'
 import { GoogleConnectionCard } from '@/components/google/GoogleConnectionCard'
@@ -46,6 +47,17 @@ export default function Opportunities() {
   const [loading, setLoading] = React.useState(true)
   const [reloadToken, setReloadToken] = React.useState(0)
   const [onlyCrawled, setOnlyCrawled] = React.useState(false)
+  const [applied, setApplied] = React.useState<Map<string, AppliedFix>>(new Map())
+  const [showApplied, setShowApplied] = React.useState(false)
+  /**
+   * Which opportunities to hide, decided once when the list loads.
+   *
+   * Filtering on `applied` directly would make a card vanish the moment its
+   * fix is published — while the user is still reading the confirmation
+   * that it worked. Publishing marks the card instead; it drops off the
+   * list on the next visit.
+   */
+  const [hiddenKeys, setHiddenKeys] = React.useState<Set<string>>(new Set())
 
   /**
    * Whether the crawler has this opportunity's page. It used to decide
@@ -58,10 +70,29 @@ export default function Opportunities() {
     [pagesByUrl],
   )
 
-  const visible = React.useMemo(
-    () => (onlyCrawled ? opportunities.filter(isActionable) : opportunities),
-    [opportunities, onlyCrawled, isActionable],
-  )
+  const isApplied = React.useCallback((o: ClassifiedOpportunity) => applied.has(appliedFixKey(o)), [applied])
+
+  const markApplied = React.useCallback((o: ClassifiedOpportunity) => {
+    setApplied((prev) =>
+      new Map(prev).set(appliedFixKey(o), {
+        keyword: o.keyword,
+        kind: o.kind,
+        pageUrl: o.page,
+        appliedAt: new Date().toISOString(),
+      }),
+    )
+  }, [])
+
+  const visible = React.useMemo(() => {
+    let list = opportunities
+    if (onlyCrawled) list = list.filter(isActionable)
+    // Hidden by default: Google needs weeks to re-crawl a page and report a
+    // new position, so a fixed opportunity keeps coming back unchanged.
+    if (!showApplied) list = list.filter((o) => !hiddenKeys.has(appliedFixKey(o)))
+    return list
+  }, [opportunities, onlyCrawled, showApplied, isActionable, hiddenKeys])
+
+  const appliedCount = React.useMemo(() => opportunities.filter(isApplied).length, [opportunities, isApplied])
 
   const actionableCount = React.useMemo(
     () => opportunities.filter(isActionable).length,
@@ -130,7 +161,10 @@ export default function Opportunities() {
       // Console's reported page URL and the crawler's raw stored URL can
       // differ by scheme, www, or a trailing slash alone; comparing raw
       // strings silently treats the same page as two unmatched ones.
-      const { data: pageRows } = await supabase.from('pages').select('*').eq('project_id', id!)
+      const [{ data: pageRows }, appliedFixes] = await Promise.all([
+        supabase.from('pages').select('*').eq('project_id', id!),
+        fetchAppliedFixes(id!),
+      ])
 
       if (!cancelled) {
         setPagesByUrl(
@@ -138,6 +172,8 @@ export default function Opportunities() {
             ((pageRows as Page[]) ?? []).map((p) => [p.url_normalized ?? normalizeUrl(p.url), p]),
           ),
         )
+        setApplied(appliedFixes)
+        setHiddenKeys(new Set(appliedFixes.keys()))
         setOpportunities(all)
         setLoading(false)
       }
@@ -228,15 +264,28 @@ export default function Opportunities() {
                 riguardano pagine già scansionate. Sulle altre l'AI legge la pagina dal vivo, quindi può correggerle
                 comunque.
               </p>
-              <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={onlyCrawled}
-                  onChange={(e) => setOnlyCrawled(e.target.checked)}
-                  className="size-3.5 accent-[var(--color-accent)]"
-                />
-                Mostra solo quelle già scansionate
-              </label>
+              <div className="flex flex-wrap items-center gap-4">
+                <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={onlyCrawled}
+                    onChange={(e) => setOnlyCrawled(e.target.checked)}
+                    className="size-3.5 accent-[var(--color-accent)]"
+                  />
+                  Mostra solo quelle già scansionate
+                </label>
+                {appliedCount > 0 && (
+                  <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={showApplied}
+                      onChange={(e) => setShowApplied(e.target.checked)}
+                      className="size-3.5 accent-[var(--color-accent)]"
+                    />
+                    Mostra anche le {appliedCount} già corrette
+                  </label>
+                )}
+              </div>
             </div>
           )}
 
@@ -252,13 +301,26 @@ export default function Opportunities() {
             </TabsList>
 
             <TabsContent value="all">
-              <OpportunityList items={visible} projectId={project.id} pagesByUrl={pagesByUrl} showKind />
+              <OpportunityList
+                items={visible}
+                projectId={project.id}
+                pagesByUrl={pagesByUrl}
+                applied={applied}
+                onApplied={markApplied}
+                showKind
+              />
             </TabsContent>
 
             {KIND_ORDER.map((kind) => (
               <TabsContent key={kind} value={kind} className="space-y-3">
                 <p className="text-sm text-muted-foreground">{KIND_LABELS[kind].blurb}</p>
-                <OpportunityList items={byKind.get(kind)!} projectId={project.id} pagesByUrl={pagesByUrl} />
+                <OpportunityList
+                  items={byKind.get(kind)!}
+                  projectId={project.id}
+                  pagesByUrl={pagesByUrl}
+                  applied={applied}
+                  onApplied={markApplied}
+                />
               </TabsContent>
             ))}
 
@@ -306,11 +368,15 @@ function OpportunityList({
   items,
   projectId,
   pagesByUrl,
+  applied,
+  onApplied,
   showKind = false,
 }: {
   items: ClassifiedOpportunity[]
   projectId: string
   pagesByUrl: Map<string, Page>
+  applied: Map<string, AppliedFix>
+  onApplied: (o: ClassifiedOpportunity) => void
   showKind?: boolean
 }) {
   const [page, setPage] = React.useState(0)
@@ -336,6 +402,7 @@ function OpportunityList({
     <div className="space-y-3">
       {visible.map((o) => {
         const page = o.page ? pagesByUrl.get(normalizeUrl(o.page)) : undefined
+        const appliedFix = applied.get(appliedFixKey(o))
         return (
           <Card key={`${o.kind}-${o.keyword}`}>
             <CardContent className="space-y-3 p-4">
@@ -356,6 +423,11 @@ function OpportunityList({
                       ) : (
                         <Badge variant="warning">Non scansionata</Badge>
                       ))}
+                    {appliedFix && (
+                      <Badge variant="outline" className="text-success">
+                        Corretta il {new Date(appliedFix.appliedAt).toLocaleDateString('it-IT')}
+                      </Badge>
+                    )}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">{o.headline}</p>
                 </div>
@@ -383,6 +455,7 @@ function OpportunityList({
                 page={o.page}
                 pageCrawled={o.page ? Boolean(page) : undefined}
                 competingPages={o.competingPages}
+                onApplied={() => onApplied(o)}
               />
 
               {page ? (

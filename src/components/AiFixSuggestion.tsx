@@ -2,6 +2,7 @@ import * as React from 'react'
 import { Check, Copy, ExternalLink, Hand, Loader2, Minus, Sparkles, UploadCloud } from 'lucide-react'
 import { suggestFix, type FixStep, type SuggestedFix } from '@/lib/edgeFunctions'
 import { applyFix, previewFix, type FixPreview } from '@/lib/wordpress'
+import { recordAppliedFix } from '@/lib/appliedFixes'
 import { Button } from '@/components/ui/button'
 
 /**
@@ -28,6 +29,7 @@ export function AiFixSuggestion({
   page,
   pageCrawled,
   competingPages,
+  onApplied,
 }: {
   projectId: string
   keyword: string
@@ -45,6 +47,8 @@ export function AiFixSuggestion({
   pageCrawled?: boolean
   /** For 'cannibalization': every page competing for the keyword. */
   competingPages?: { page: string; impressions: number; clicks: number; position: number | null }[]
+  /** Called once the fix has reached the site, so the list can mark it done. */
+  onApplied?: () => void
 }) {
   const [state, setState] = React.useState<'idle' | 'loading' | 'done' | 'unconfigured' | 'error'>('idle')
   const [fix, setFix] = React.useState<SuggestedFix | null>(null)
@@ -174,6 +178,16 @@ export function AiFixSuggestion({
           pageUrl={page}
           title={done.title}
           metaDescription={done.metaDescription}
+          onPublished={async () => {
+            await recordAppliedFix(projectId, {
+              keyword,
+              kind,
+              page,
+              title: done.title,
+              metaDescription: done.metaDescription,
+            })
+            onApplied?.()
+          }}
         />
       ) : (
         <p className="text-[11px] text-muted-foreground">
@@ -261,11 +275,13 @@ function PublishToWordPress({
   pageUrl,
   title,
   metaDescription,
+  onPublished,
 }: {
   projectId: string
   pageUrl: string
   title: string | null
   metaDescription: string | null
+  onPublished?: () => Promise<void>
 }) {
   const [state, setState] = React.useState<'idle' | 'checking' | 'confirm' | 'publishing' | 'done' | 'error'>('idle')
   const [preview, setPreview] = React.useState<FixPreview | null>(null)
@@ -289,6 +305,11 @@ function PublishToWordPress({
     try {
       await applyFix(projectId, { pageUrl, title, metaDescription })
       setState('done')
+      // After the write, never before: the record exists to hide finished
+      // work, and one written for a failed publish would hide an
+      // opportunity that is still open. A failure to record is not worth
+      // reporting as a failed publish — the page really was updated.
+      await onPublished?.().catch(() => {})
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Pubblicazione non riuscita')
       setState('error')
