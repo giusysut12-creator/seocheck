@@ -6,8 +6,8 @@ const insert = vi.fn()
 const order = vi.fn()
 const eq = vi.fn(() => ({ order }))
 const select = vi.fn(() => ({ eq }))
-const from = vi.fn(() => ({ select, insert }))
-vi.mock('@/lib/supabase', () => ({ supabase: { from: (...a: unknown[]) => from(...a) } }))
+const from = vi.fn((_table: string) => ({ select, insert }))
+vi.mock('@/lib/supabase', () => ({ supabase: { from } }))
 
 const { appliedFixKey, fetchAppliedFixes, recordAppliedFix } = await import('./appliedFixes')
 
