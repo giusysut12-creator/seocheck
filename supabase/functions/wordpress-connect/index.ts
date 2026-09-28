@@ -102,17 +102,41 @@ async function verifyCredentials(siteUrl: string, username: string, appPassword:
 const YOAST_TITLE_KEY = '_yoast_wpseo_title'
 const YOAST_DESC_KEY = '_yoast_wpseo_metadesc'
 
+
 /**
- * Mirrors normalize_url() in the database, so a permalink coming back from
- * WordPress can be compared with the URL the crawler stored.
+ * Whether two URLs name the same page on this site.
+ *
+ * Comparing the strings is not enough. The crawler stores what the site's
+ * own HTML linked to, WordPress returns what it would print today, and the
+ * two disagree in ways that mean nothing: percent-encoding (an Italian shop
+ * has plenty of accented slugs, and "perché" is stored one way and returned
+ * the other), a trailing slash, www, http against https. Every one of those
+ * made a real product look like a page that could not be found.
+ *
+ * The host is deliberately not compared: the request is authenticated
+ * against one site, so a match can only be on that site anyway, and a shop
+ * reachable at more than one hostname would otherwise never match.
  */
-function normalizeUrl(url: string): string {
-  return url
-    .toLowerCase()
-    .replace(/#.*$/, '')
-    .replace(/^https?:\/\//, '')
-    .replace(/^www\./, '')
-    .replace(/\/+$/, '')
+function samePage(a: string, b: string): boolean {
+  return pathOf(a) !== '' && pathOf(a) === pathOf(b)
+}
+
+function pathOf(url: string): string {
+  try {
+    const path = new URL(url).pathname
+    // A slug can be stored encoded on one side and decoded on the other;
+    // decoding both is what makes them comparable. An invalid escape is
+    // left as-is rather than throwing the comparison away.
+    let decoded = path
+    try {
+      decoded = decodeURIComponent(path)
+    } catch {
+      // keep the raw path
+    }
+    return decoded.toLowerCase().replace(/\/+$/, '')
+  } catch {
+    return ''
+  }
 }
 
 interface WpEntity {
@@ -140,13 +164,27 @@ function basicAuth(conn: { username: string; app_password: string }): string {
  * check exists to prevent. Anything that doesn't match exactly is refused
  * rather than guessed at.
  */
+/**
+ * Finds the post, page or product a URL refers to.
+ *
+ * Returns the entity, or the permalinks it did find for that slug so the
+ * caller can say why it refused. "Not found with certainty" on its own
+ * tells the user nothing they can act on.
+ */
 async function resolveEntity(
   conn: { site_url: string; username: string; app_password: string },
   pageUrl: string,
-): Promise<WpEntity | null> {
+): Promise<{ entity: WpEntity | null; candidates: string[] }> {
   const path = new URL(pageUrl).pathname.replace(/\/+$/, '')
-  const slug = decodeURIComponent(path.split('/').filter(Boolean).pop() ?? '')
-  if (!slug) return null
+  let slug = path.split('/').filter(Boolean).pop() ?? ''
+  try {
+    slug = decodeURIComponent(slug)
+  } catch {
+    // An invalid escape means the slug is already literal.
+  }
+  if (!slug) return { entity: null, candidates: [] }
+
+  const candidates: string[] = []
 
   const attempts: { api: 'wp' | 'wc'; route: string; url: string }[] = [
     { api: 'wp', route: 'pages', url: `${conn.site_url}/wp-json/wp/v2/pages?slug=${encodeURIComponent(slug)}&context=edit` },
@@ -171,7 +209,11 @@ async function resolveEntity(
 
     for (const row of rows) {
       const link = (row.link ?? row.permalink) as string | undefined
-      if (!link || normalizeUrl(link) !== normalizeUrl(pageUrl)) continue
+      if (!link) continue
+      if (!samePage(link, pageUrl)) {
+        candidates.push(link)
+        continue
+      }
 
       const meta = (row.meta ?? {}) as Record<string, unknown>
       const metaData = (row.meta_data ?? []) as { key: string; value: unknown }[]
@@ -179,17 +221,20 @@ async function resolveEntity(
       const titleField = row.title as { raw?: string; rendered?: string } | undefined
 
       return {
-        api: attempt.api,
-        route: attempt.route,
-        id: Number(row.id),
-        link,
-        postTitle: (titleField?.raw ?? titleField?.rendered ?? (row.name as string) ?? '') as string,
-        currentSeoTitle: ((meta[YOAST_TITLE_KEY] as string) ?? fromMetaData(YOAST_TITLE_KEY) ?? null) || null,
-        currentSeoDescription: ((meta[YOAST_DESC_KEY] as string) ?? fromMetaData(YOAST_DESC_KEY) ?? null) || null,
+        entity: {
+          api: attempt.api,
+          route: attempt.route,
+          id: Number(row.id),
+          link,
+          postTitle: (titleField?.raw ?? titleField?.rendered ?? (row.name as string) ?? '') as string,
+          currentSeoTitle: ((meta[YOAST_TITLE_KEY] as string) ?? fromMetaData(YOAST_TITLE_KEY) ?? null) || null,
+          currentSeoDescription: ((meta[YOAST_DESC_KEY] as string) ?? fromMetaData(YOAST_DESC_KEY) ?? null) || null,
+        },
+        candidates,
       }
     }
   }
-  return null
+  return { entity: null, candidates }
 }
 
 /**
@@ -234,7 +279,7 @@ async function writeSeoFields(
   await res.body?.cancel()
 
   // Trust nothing: read the values back and compare.
-  const after = await resolveEntity(conn, entity.link)
+  const { entity: after } = await resolveEntity(conn, entity.link)
   const titleOk = !fields.title || after?.currentSeoTitle === fields.title
   const descOk = !fields.description || after?.currentSeoDescription === fields.description
   return {
@@ -361,10 +406,16 @@ Deno.serve(async (req) => {
           )
         }
 
-        const entity = await resolveEntity(conn, body.page_url)
+        const { entity, candidates } = await resolveEntity(conn, body.page_url)
         if (!entity) {
+          // Saying what the site did return turns a dead end into something
+          // the user can act on: a slug that exists under a different
+          // permalink is a different problem from one that does not exist.
+          const detail = candidates.length
+            ? ` Su WordPress esiste ${candidates[0]}, che non è la stessa pagina.`
+            : ' WordPress non ha trovato nessun contenuto con questo indirizzo.'
           throw new WpError(
-            'Non ho trovato con certezza questa pagina su WordPress. Aggiornala a mano per sicurezza.',
+            `Non ho trovato con certezza questa pagina su WordPress.${detail} Aggiornala a mano per sicurezza.`,
             'page_not_found',
           )
         }
