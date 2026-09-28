@@ -73,7 +73,10 @@ export default function Traffic() {
       </div>
 
       {configured === false ? (
-        <ProviderNotConfigured feature="la stima del traffico organico" />
+        <ProviderNotConfigured
+          feature="la stima del traffico organico di altri siti"
+          alternative="Il traffico del tuo sito lo trovi invece in Panoramica e in Parole chiave: arriva da Search Console ed è reale, non stimato."
+        />
       ) : error ? (
         <EmptyState title="Non è stato possibile caricare i dati di traffico" description={error} />
       ) : points.length === 0 ? (

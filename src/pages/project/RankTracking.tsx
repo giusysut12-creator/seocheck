@@ -4,6 +4,8 @@ import { ArrowDown, ArrowUp, Loader2, Minus, Plus, RefreshCw } from 'lucide-reac
 import { supabase } from '@/lib/supabase'
 import { useCurrentProject } from '@/hooks/useCurrentProject'
 import { checkProviderConfigured, seoProvider } from '@/lib/seo/seoApiProvider'
+import { syncRankingsFromSearchConsole } from '@/lib/google/rankTracking'
+import { useGoogleStatus } from '@/hooks/useGoogleStatus'
 import type { Keyword, KeywordRanking } from '@/lib/database.types'
 import { ProviderNotConfigured } from '@/components/ProviderNotConfigured'
 import { EmptyState } from '@/components/EmptyState'
@@ -27,6 +29,16 @@ export default function RankTracking() {
   const [addOpen, setAddOpen] = React.useState(false)
   const [newKeywords, setNewKeywords] = React.useState('')
   const [error, setError] = React.useState<string | null>(null)
+  const [notice, setNotice] = React.useState<string | null>(null)
+  const { status: googleStatus } = useGoogleStatus(id)
+
+  /**
+   * Search Console reports where Google actually placed the page for real
+   * searches, so it is the better source for the user's own site — and it
+   * is already connected. The paid provider is only reached for what
+   * Search Console genuinely does not hold.
+   */
+  const fromSearchConsole = Boolean(googleStatus?.connected && googleStatus?.property)
 
   const loadKeywords = React.useCallback(async () => {
     if (!id) return
@@ -84,7 +96,24 @@ export default function RankTracking() {
     if (!project || keywords.length === 0) return
     setRefreshing(true)
     setError(null)
+    setNotice(null)
     try {
+      if (fromSearchConsole) {
+        const { daysWritten, withoutData } = await syncRankingsFromSearchConsole(
+          project.id,
+          keywords.map((k) => ({ id: k.id, keyword: k.keyword })),
+        )
+        await loadKeywords()
+        // A keyword the site has never ranked for is a real answer, not a
+        // failure to bury: saying so is what stops the page looking broken
+        // when it is simply reporting the truth.
+        setNotice(
+          withoutData.length > 0
+            ? `${daysWritten} giorni aggiornati. Google non ha ancora dati per: ${withoutData.slice(0, 5).join(', ')}${withoutData.length > 5 ? ` e altre ${withoutData.length - 5}` : ''} — significa che il sito non è ancora comparso per queste ricerche.`
+            : `${daysWritten} giorni di posizioni aggiornati da Search Console.`,
+        )
+        return
+      }
       const results = await seoProvider.getKeywordRankings(
         project.domain,
         keywords.map((k) => k.keyword),
@@ -164,15 +193,43 @@ export default function RankTracking() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-          <Button variant="accent" onClick={handleRefresh} disabled={refreshing || keywords.length === 0}>
+          <Button
+            variant="accent"
+            onClick={handleRefresh}
+            disabled={refreshing || keywords.length === 0 || (!fromSearchConsole && configured === false)}
+          >
             {refreshing ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-            Aggiorna posizioni
+            {fromSearchConsole ? 'Aggiorna da Search Console' : 'Aggiorna posizioni'}
           </Button>
         </div>
       </div>
 
       {error && <p className="text-xs text-destructive">{error}</p>}
-      {configured === false && <ProviderNotConfigured feature="il monitoraggio in tempo reale delle posizioni delle parole chiave" />}
+      {notice && <p className="text-xs text-muted-foreground">{notice}</p>}
+
+      {fromSearchConsole ? (
+        <Card className="border-accent/30 bg-accent/5">
+          <CardContent className="space-y-1 p-4 text-sm">
+            <p className="text-foreground">
+              Le posizioni arrivano da <strong className="font-medium">Google Search Console</strong>, senza costi
+              aggiuntivi: sono la posizione media reale in cui Google ha mostrato le tue pagine a chi ha cercato
+              davvero, non una stima ricavata scansionando i risultati.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Due limiti da conoscere: i dati arrivano con circa 3 giorni di ritardo, e una parola chiave per cui il
+              sito non è mai comparso non ha una posizione da mostrare. Per il volume di ricerca e le posizioni dei
+              concorrenti serve invece un provider dati esterno.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        configured === false && (
+          <ProviderNotConfigured
+            feature="il monitoraggio delle posizioni scansionando i risultati di Google"
+            alternative="Collega Google Search Console e le posizioni reali del tuo sito arrivano gratis, senza provider."
+          />
+        )
+      )}
 
       {keywords.length === 0 ? (
         <EmptyState title="Ancora nessuna parola chiave monitorata" description="Aggiungi parole chiave qui sopra per iniziare a monitorare la loro posizione nel tempo." />
