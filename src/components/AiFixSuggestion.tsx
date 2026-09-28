@@ -36,10 +36,10 @@ export function AiFixSuggestion({
   actions: string[]
   page: string | null
   /**
-   * Whether `page` has been crawled yet. Known upfront from the same lookup
-   * that decides "Apri analisi pagina", so the card can say so before the
-   * user spends a click (and an AI call) discovering it — the AI would
-   * refuse to invent a rewrite for a page it has no facts about anyway.
+   * Whether `page` has been crawled yet. No longer gates generating: when
+   * the crawl hasn't reached a page, the assistant reads it from the live
+   * site instead, so the fix is grounded either way. Kept so the card can
+   * say where the facts came from.
    * Undefined when `page` is null, or the caller hasn't checked.
    */
   pageCrawled?: boolean
@@ -49,9 +49,6 @@ export function AiFixSuggestion({
   const [state, setState] = React.useState<'idle' | 'loading' | 'done' | 'unconfigured' | 'error'>('idle')
   const [fix, setFix] = React.useState<SuggestedFix | null>(null)
   const [error, setError] = React.useState<string | null>(null)
-  // Trying anyway overrides the upfront "not crawled" notice — the crawl
-  // coverage known here can be a step behind a scan that just finished.
-  const [tryAnyway, setTryAnyway] = React.useState(false)
 
   async function generate() {
     setState('loading')
@@ -70,30 +67,20 @@ export function AiFixSuggestion({
     setState('done')
   }
 
-  if (state === 'idle' && page && pageCrawled === false && !tryAnyway) {
-    return (
-      <div className="space-y-1">
-        <p className="text-xs text-muted-foreground">
-          Questa pagina non è ancora stata scansionata — avvia un controllo del sito per generare una correzione
-          mirata su title, meta description e H1 reali.
-        </p>
-        <button
-          type="button"
-          onClick={() => setTryAnyway(true)}
-          className="text-xs text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground"
-        >
-          Ho appena scansionato, prova comunque
-        </button>
-      </div>
-    )
-  }
-
   if (state === 'idle' || state === 'loading') {
     return (
-      <Button variant="outline" size="sm" onClick={generate} disabled={state === 'loading'}>
-        {state === 'loading' ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
-        Genera correzione con AI
-      </Button>
+      <div className="space-y-1">
+        <Button variant="outline" size="sm" onClick={generate} disabled={state === 'loading'}>
+          {state === 'loading' ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+          Genera correzione con AI
+        </Button>
+        {page && pageCrawled === false && (
+          <p className="text-[11px] text-muted-foreground">
+            Questa pagina non è nella scansione: l'AI la legge direttamente dal tuo sito, quindi ci mette qualche
+            secondo in più.
+          </p>
+        )}
+      </div>
     )
   }
 

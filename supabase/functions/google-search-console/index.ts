@@ -296,7 +296,7 @@ Deno.serve(async (req) => {
 
         const { data: project } = await callerClient
           .from('projects')
-          .select('id')
+          .select('id, search_console_property_id')
           .eq('id', body.project_id)
           .maybeSingle()
         if (!project) return jsonResponse({ error: 'Project not found or access denied' }, 404)
@@ -328,6 +328,21 @@ Deno.serve(async (req) => {
           .single()
 
         await db.from('projects').update({ search_console_property_id: prop!.id }).eq('id', body.project_id)
+
+        // Drop what the previous property imported. Rows carry the property
+        // they came from but nothing reads that column, so leaving them
+        // behind mixes two different websites into every view of this
+        // project — one of them a site the user did not even open. They are
+        // a cache of Google's data and a sync brings back whatever the new
+        // property really has.
+        if (project.search_console_property_id && project.search_console_property_id !== prop!.id) {
+          const { error: purgeError } = await db
+            .from('search_console_queries')
+            .delete()
+            .eq('project_id', body.project_id)
+            .neq('property_id', prop!.id)
+          if (purgeError) console.error('Failed to purge rows from the previous property', purgeError)
+        }
 
         return jsonResponse({ property: prop })
       }

@@ -159,6 +159,103 @@ interface PageFacts {
   content_excerpt: string | null
 }
 
+const LIVE_FETCH_TIMEOUT_MS = 8_000
+const LIVE_HTML_LIMIT = 600_000
+const LIVE_EXCERPT_CHARS = 1500
+
+function stripHtmlTags(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#039;|&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+}
+
+/**
+ * Checks that a URL belongs to the project the caller owns, before anything
+ * fetches it. The page URL reaches this function from the browser, so
+ * without this the assistant would fetch any address a caller named, from
+ * inside Supabase's network — a request the user never asked for, sent by a
+ * server they trust.
+ */
+function belongsToProject(pageUrl: string, projectDomain: string): boolean {
+  let parsed: URL
+  try {
+    parsed = new URL(pageUrl)
+  } catch {
+    return false
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false
+
+  const host = parsed.hostname.replace(/^www\./, '').toLowerCase()
+  const domain = projectDomain
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/\/.*$/, '')
+  if (!domain) return false
+  return host === domain || host.endsWith(`.${domain}`)
+}
+
+/**
+ * Reads the page from the live site when the crawler hasn't stored it.
+ *
+ * The crawler reaches a few hundred pages per run, so on a catalogue of any
+ * size most opportunities point at a page it has never fetched — and the
+ * assistant would refuse them all, which leaves the user with advice and no
+ * way to act on it. One page is one request: cheap here, and the facts are
+ * as real as the crawler's, just read a moment later.
+ *
+ * Returns null on any failure. A page that cannot be read is reported as
+ * unavailable, never filled in from the keyword.
+ */
+async function fetchPageFactsLive(pageUrl: string, projectDomain: string): Promise<PageFacts | null> {
+  if (!belongsToProject(pageUrl, projectDomain)) return null
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), LIVE_FETCH_TIMEOUT_MS)
+  try {
+    const res = await fetch(pageUrl, {
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: { 'User-Agent': 'SEOCheckBot/1.0 (+ai-assistant)', Accept: 'text/html' },
+    })
+    if (!res.ok || !(res.headers.get('content-type') ?? '').includes('text/html')) {
+      await res.body?.cancel()
+      return null
+    }
+    const html = (await res.text()).slice(0, LIVE_HTML_LIMIT)
+
+    const title = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1] ?? null
+    const meta =
+      /<meta[^>]+name=["']description["'][^>]*content=["']([\s\S]*?)["']/i.exec(html)?.[1] ??
+      /<meta[^>]+content=["']([\s\S]*?)["'][^>]+name=["']description["']/i.exec(html)?.[1] ??
+      null
+    const h1 = /<h1[^>]*>([\s\S]*?)<\/h1>/i.exec(html)?.[1] ?? null
+
+    const body = /<body[^>]*>([\s\S]*)<\/body>/i.exec(html)?.[1] ?? html
+    const text = stripHtmlTags(body).replace(/\s+/g, ' ').trim()
+
+    return {
+      title: title ? stripHtmlTags(title).trim() : null,
+      meta_description: meta ? stripHtmlTags(meta).trim() : null,
+      h1: h1 ? stripHtmlTags(h1).trim() : null,
+      word_count: text.split(/\s+/).filter(Boolean).length,
+      content_excerpt: text.slice(0, LIVE_EXCERPT_CHARS) || null,
+    }
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /** A real crawled page of this project, offered as a place to link FROM. */
 interface LinkCandidate {
   url: string
@@ -243,6 +340,7 @@ async function handleSuggestFix(
   },
 ) {
   let pageFacts: PageFacts | null = null
+  let pageReadLive = false
   if (input.pageUrl) {
     const { data } = await db
       .from('pages')
@@ -251,6 +349,16 @@ async function handleSuggestFix(
       .eq('url_normalized', normalizeUrl(input.pageUrl))
       .maybeSingle()
     pageFacts = (data as unknown as PageFacts | null) ?? null
+
+    // The crawler either hasn't reached this page or reached it before it
+    // started keeping page text. Either way the page itself is right there.
+    if (!pageFacts || !pageFacts.content_excerpt) {
+      const live = await fetchPageFactsLive(input.pageUrl, project.domain)
+      if (live) {
+        pageFacts = live
+        pageReadLive = true
+      }
+    }
   }
 
   // The whole point of a cannibalization fix is telling the pages apart —
@@ -288,15 +396,16 @@ async function handleSuggestFix(
           current_h1: pageFacts.h1,
           word_count: pageFacts.word_count,
           current_content_excerpt: pageFacts.content_excerpt,
-          // The page predates the crawler storing page text. Saying so here
-          // is what stops the model guessing why it has nothing to work
-          // with — and a re-scan really does fix it.
+          read_live: pageReadLive || undefined,
+          // Only reachable when the live read failed too, so a re-scan is
+          // the honest remedy left. Saying so stops the model guessing why
+          // it has nothing to work with.
           content_unavailable_reason: pageFacts.content_excerpt
             ? undefined
-            : 'This page was crawled before the crawler started storing page text. Re-running the Site Audit will make the real text available.',
+            : 'The page text could not be read. Re-running the Site Audit will make it available.',
         }
       : input.pageUrl
-        ? `No crawled data yet for ${input.pageUrl} — run a Site Audit so its current title/meta/H1 are known before rewriting them.`
+        ? `${input.pageUrl} could not be read, either from the crawl or from the live site — run a Site Audit so its current title/meta/H1 are known before rewriting them.`
         : 'This opportunity is not tied to one specific page.',
     competing_pages: competingPageFacts.length > 0 ? competingPageFacts : undefined,
     internal_link_candidates: linkCandidates.length > 0 ? linkCandidates : undefined,

@@ -48,11 +48,10 @@ export default function Opportunities() {
   const [onlyCrawled, setOnlyCrawled] = React.useState(false)
 
   /**
-   * Whether the crawler has this opportunity's page, which decides whether a
-   * ready-to-paste rewrite is possible at all: the AI needs the page's real
-   * current title/meta/H1 to rewrite them, and refuses to invent them.
-   * Opportunities themselves come from Search Console and are real either
-   * way, so this labels them rather than hiding them by default.
+   * Whether the crawler has this opportunity's page. It used to decide
+   * whether a fix was possible at all; now the assistant reads a missing
+   * page from the live site, so this only says where the facts come from
+   * and whether the on-page analysis is available.
    */
   const isActionable = React.useCallback(
     (o: ClassifiedOpportunity) => !o.page || pagesByUrl.has(normalizeUrl(o.page)),
@@ -164,6 +163,16 @@ export default function Opportunities() {
           <p className="text-sm text-muted-foreground">
             Su cosa lavorare per {project.domain}, in ordine di traffico in gioco e velocità con cui si può ottenere.
           </p>
+          {/* Which Search Console property these numbers come from. Each
+              project points at its own, and picking the wrong one produces a
+              page full of real opportunities belonging to another site —
+              which is unrecognisable as a mistake unless the source is
+              written down. */}
+          {status?.property && (
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Dati da Search Console: <span className="text-foreground">{status.property.property_url}</span>
+            </p>
+          )}
         </div>
         <div className="flex items-start gap-2">
           <Select value={range} onValueChange={(v) => setRange(v as SyncRange)}>
@@ -216,7 +225,8 @@ export default function Opportunities() {
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
               <p className="text-muted-foreground">
                 <strong className="font-semibold text-foreground">{actionableCount}</strong> di {opportunities.length}{' '}
-                riguardano pagine già scansionate — solo su quelle l'AI può scrivere la correzione pronta.
+                riguardano pagine già scansionate. Sulle altre l'AI legge la pagina dal vivo, quindi può correggerle
+                comunque.
               </p>
               <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
                 <input
@@ -225,7 +235,7 @@ export default function Opportunities() {
                   onChange={(e) => setOnlyCrawled(e.target.checked)}
                   className="size-3.5 accent-[var(--color-accent)]"
                 />
-                Mostra solo quelle su cui posso intervenire
+                Mostra solo quelle già scansionate
               </label>
             </div>
           )}
@@ -338,8 +348,8 @@ function OpportunityList({
                         {KIND_LABELS[o.kind].label}
                       </Badge>
                     )}
-                    {/* Whether a ready-to-paste rewrite is possible at all,
-                        visible before the user invests a click in finding out. */}
+                    {/* Where the page facts come from: the stored crawl, or
+                        a live read at generation time. */}
                     {o.page &&
                       (page ? (
                         <Badge variant="success">Scansionata</Badge>
@@ -384,7 +394,8 @@ function OpportunityList({
                 </Link>
               ) : o.page ? (
                 <p className="truncate text-xs text-muted-foreground">
-                  {o.page} · non ancora scansionata — avvia un controllo del sito per il dettaglio on-page
+                  {o.page} · non ancora scansionata — l'AI la legge dal vivo; per l'analisi on-page completa avvia un
+                  controllo del sito
                 </p>
               ) : null}
             </CardContent>
