@@ -16,6 +16,7 @@ import {
 import type { Page, SeoOpportunity } from '@/lib/database.types'
 import { appliedFixKey, fetchAppliedFixes, type AppliedFix } from '@/lib/appliedFixes'
 import { AiFixSuggestion } from '@/components/AiFixSuggestion'
+import { FixOutcomes } from '@/components/FixOutcomes'
 import { WordPressConnectionCard } from '@/components/WordPressConnectionCard'
 import { GoogleConnectionCard } from '@/components/google/GoogleConnectionCard'
 import { RescanButton } from '@/components/google/RescanButton'
@@ -122,7 +123,7 @@ export default function Opportunities() {
 
       const window = dateWindow(range)
       const [keywordResult, cannibalized] = await Promise.all([
-        fetchKeywords(id!, window, { sort: 'impressions', direction: 'desc', limit: 500 }).catch(() => ({
+        fetchKeywords(id!, window, { sort: 'impressions', direction: 'desc', limit: 1500 }).catch(() => ({
           rows: [] as GscKeywordRow[],
           total: 0,
         })),
@@ -298,6 +299,7 @@ export default function Opportunities() {
                 </TabsTrigger>
               ))}
               <TabsTrigger value="technical">Tecniche ({technical.length})</TabsTrigger>
+              <TabsTrigger value="outcomes">Com'è andata ({applied.size})</TabsTrigger>
             </TabsList>
 
             <TabsContent value="all">
@@ -323,6 +325,10 @@ export default function Opportunities() {
                 />
               </TabsContent>
             ))}
+
+            <TabsContent value="outcomes" className="space-y-3">
+              <FixOutcomes projectId={project.id} />
+            </TabsContent>
 
             <TabsContent value="technical" className="space-y-3">
               {technical.length === 0 ? (

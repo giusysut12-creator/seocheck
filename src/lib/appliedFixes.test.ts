@@ -9,7 +9,7 @@ const select = vi.fn(() => ({ eq }))
 const from = vi.fn((_table: string) => ({ select, insert }))
 vi.mock('@/lib/supabase', () => ({ supabase: { from } }))
 
-const { appliedFixKey, fetchAppliedFixes, recordAppliedFix } = await import('./appliedFixes')
+const { appliedFixKey, fetchAppliedFixes, recordAppliedFix, verdictFor } = await import('./appliedFixes')
 
 beforeEach(() => {
   insert.mockReset().mockResolvedValue({ error: null })
@@ -76,5 +76,38 @@ describe('recordAppliedFix', () => {
       title: 'Nuovo titolo',
       meta_description: 'Nuova descrizione',
     })
+  })
+})
+
+describe('verdictFor', () => {
+  const outcome = (over: Partial<{ beforeDays: number; afterDays: number; beforePos: number | null; afterPos: number | null }>) => ({
+    keyword: 'zaino',
+    kind: 'ctr_gap',
+    pageUrl: 'https://shop.it/p',
+    appliedAt: '2026-01-01T00:00:00.000Z',
+    before: { clicks: 10, impressions: 500, position: over.beforePos ?? 7, days: over.beforeDays ?? 28 },
+    after: { clicks: 40, impressions: 600, position: over.afterPos ?? 4, days: over.afterDays ?? 28 },
+  })
+
+  it('refuses a verdict before Google has had time to re-crawl', () => {
+    // Four days of data will happily show a "gain" that reverses next week.
+    expect(verdictFor(outcome({ afterDays: 4 }))).toBe('too_early')
+  })
+
+  it('refuses a verdict with nothing to compare against', () => {
+    expect(verdictFor(outcome({ beforeDays: 0 }))).toBe('no_baseline')
+  })
+
+  it('reads a real climb as an improvement', () => {
+    expect(verdictFor(outcome({ beforePos: 7, afterPos: 4 }))).toBe('improved')
+  })
+
+  it('calls a fraction of a position unchanged, not a win', () => {
+    // Search Console's average position moves this much on its own.
+    expect(verdictFor(outcome({ beforePos: 4.2, afterPos: 3.9 }))).toBe('unchanged')
+  })
+
+  it('says so when the page lost ground', () => {
+    expect(verdictFor(outcome({ beforePos: 4, afterPos: 9 }))).toBe('worse')
   })
 })

@@ -67,3 +67,72 @@ export async function recordAppliedFix(
     meta_description: fix.metaDescription,
   })
 }
+
+/**
+ * How a published fix has performed since it went live.
+ *
+ * Deliberately reports how many days of data exist on each side. Google
+ * takes weeks to re-crawl a page and report a new position, and its own
+ * reporting runs about three days behind, so an early verdict is noise.
+ * The caller decides what is enough; this never hides the sample size.
+ */
+export interface FixOutcome {
+  keyword: string
+  kind: string
+  pageUrl: string | null
+  appliedAt: string
+  before: { clicks: number; impressions: number; position: number | null; days: number }
+  after: { clicks: number; impressions: number; position: number | null; days: number }
+}
+
+/**
+ * Before and after for every published fix, measured on the same keyword and
+ * page. Per-day rates, not totals: the two windows rarely cover the same
+ * number of days, and comparing their totals would read as a gain whenever
+ * the "after" window is simply longer.
+ */
+export async function fetchFixOutcomes(projectId: string): Promise<FixOutcome[]> {
+  const { data, error } = await supabase.rpc('applied_fix_outcomes', { p_project_id: projectId })
+  if (error || !data) return []
+
+  return (data as Record<string, string | number | null>[]).map((row) => ({
+    keyword: String(row.keyword),
+    kind: String(row.kind),
+    pageUrl: (row.page_url as string | null) ?? null,
+    appliedAt: String(row.applied_at),
+    before: {
+      clicks: Number(row.before_clicks ?? 0),
+      impressions: Number(row.before_impressions ?? 0),
+      position: row.before_position === null ? null : Number(row.before_position),
+      days: Number(row.before_days ?? 0),
+    },
+    after: {
+      clicks: Number(row.after_clicks ?? 0),
+      impressions: Number(row.after_impressions ?? 0),
+      position: row.after_position === null ? null : Number(row.after_position),
+      days: Number(row.after_days ?? 0),
+    },
+  }))
+}
+
+/** Google needs weeks; below this many days of data any verdict is noise. */
+export const MIN_DAYS_FOR_VERDICT = 14
+
+export type FixVerdict = 'too_early' | 'no_baseline' | 'improved' | 'unchanged' | 'worse'
+
+/**
+ * What the numbers support saying, and nothing more. "Unchanged" covers
+ * movement under half a position: Search Console's average position wobbles
+ * by that much on its own, and calling that an improvement would be reading
+ * a result into noise.
+ */
+export function verdictFor(outcome: FixOutcome): FixVerdict {
+  if (outcome.after.days < MIN_DAYS_FOR_VERDICT) return 'too_early'
+  if (outcome.before.days === 0 || outcome.before.position === null || outcome.after.position === null) {
+    return 'no_baseline'
+  }
+  const change = outcome.before.position - outcome.after.position
+  if (change > 0.5) return 'improved'
+  if (change < -0.5) return 'worse'
+  return 'unchanged'
+}
