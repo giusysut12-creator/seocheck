@@ -17,6 +17,7 @@ import type { Page, SeoOpportunity } from '@/lib/database.types'
 import { appliedFixKey, fetchAppliedFixes, type AppliedFix } from '@/lib/appliedFixes'
 import { AiFixSuggestion } from '@/components/AiFixSuggestion'
 import { FixOutcomes } from '@/components/FixOutcomes'
+import { PagesToFix } from '@/components/PagesToFix'
 import { WordPressConnectionCard } from '@/components/WordPressConnectionCard'
 import { GoogleConnectionCard } from '@/components/google/GoogleConnectionCard'
 import { RescanButton } from '@/components/google/RescanButton'
@@ -45,6 +46,7 @@ export default function Opportunities() {
   const [opportunities, setOpportunities] = React.useState<ClassifiedOpportunity[]>([])
   const [technical, setTechnical] = React.useState<SeoOpportunity[]>([])
   const [pagesByUrl, setPagesByUrl] = React.useState<Map<string, Page>>(new Map())
+  const [crawledPages, setCrawledPages] = React.useState<Page[]>([])
   const [loading, setLoading] = React.useState(true)
   const [reloadToken, setReloadToken] = React.useState(0)
   const [onlyCrawled, setOnlyCrawled] = React.useState(false)
@@ -168,6 +170,7 @@ export default function Opportunities() {
       ])
 
       if (!cancelled) {
+        setCrawledPages((pageRows as Page[]) ?? [])
         setPagesByUrl(
           new Map(
             ((pageRows as Page[]) ?? []).map((p) => [p.url_normalized ?? normalizeUrl(p.url), p]),
@@ -240,6 +243,17 @@ export default function Opportunities() {
             description="Le opportunità si costruiscono dalle query per cui il tuo sito già ottiene impressioni."
           />
           <GoogleConnectionCard projectId={project.id} />
+
+          {/* The crawl does not depend on Search Console, so a project that
+              has not connected it yet still has work it can act on. Hiding
+              this behind the connection would leave that screen empty for
+              no reason. */}
+          {crawledPages.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-semibold text-foreground">Intanto: pagine da sistemare</h2>
+              <PagesToFix projectId={project.id} pages={crawledPages} />
+            </div>
+          )}
         </>
       ) : (
         <>
@@ -299,6 +313,7 @@ export default function Opportunities() {
                 </TabsTrigger>
               ))}
               <TabsTrigger value="technical">Tecniche ({technical.length})</TabsTrigger>
+              <TabsTrigger value="pages">Pagine da sistemare</TabsTrigger>
               <TabsTrigger value="outcomes">Com'è andata ({applied.size})</TabsTrigger>
             </TabsList>
 
@@ -325,6 +340,10 @@ export default function Opportunities() {
                 />
               </TabsContent>
             ))}
+
+            <TabsContent value="pages" className="space-y-3">
+              <PagesToFix projectId={project.id} pages={crawledPages} />
+            </TabsContent>
 
             <TabsContent value="outcomes" className="space-y-3">
               <FixOutcomes projectId={project.id} />

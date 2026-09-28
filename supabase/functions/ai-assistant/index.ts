@@ -462,6 +462,12 @@ async function handleSuggestFix(
     'titles suggest it could own instead. Only propose a title/meta_description for the primary page, and only if ' +
     "the differentiation you describe in notes actually changes it from that page's current title — otherwise " +
     'leave title/meta_description out and let notes carry the fix. ' +
+    // No search query here: the to-do list comes from the crawler, and the
+    // keyword field carries the page's own H1 or title instead.
+    'A "page_issues" opportunity does not come from a search query at all — it is a page the crawler found '
+    + 'problems on, and the keyword field holds that page\'s own heading rather than something anyone searched '
+    + 'for. Fix the page on its own terms: do not shoehorn the keyword into the title as if it were a query, and '
+    + 'do not claim anything about rankings or search demand, which you have no data for here. ' +
     'For a "losing_ground" opportunity, notes should point at what likely changed rather than assume a rewrite ' +
     'fixes it; only include a title/meta_description if the existing ones look like the actual cause. ' +
     "Keep notes to two or three sentences, specific enough that someone could act on them without re-reading the data.\n\n" +
