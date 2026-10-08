@@ -21,7 +21,7 @@ vi.mock('@/lib/supabase', () => ({
   },
 }))
 
-const { startCrawl, checkAiConfigured, suggestFix, humanizeAssistantText } = await import('./edgeFunctions')
+const { startCrawl, checkAiConfigured, suggestFix, humanizeAssistantText, humanizeAiError } = await import('./edgeFunctions')
 
 function workerStopped() {
   return { data: null, error: new FunctionsHttpError({ status: 546 }) }
@@ -306,3 +306,29 @@ describe('suggestFix', () => {
   })
 })
 
+
+describe('humanizeAiError', () => {
+  // Verbatim from the card the user saw.
+  const usageLimit =
+    'AI provider error: {"type":"error","error":{"type":"invalid_request_error","message":"You have reached your specified API usage limits. You will regain access on 2026-11-01 at 00:00 UTC."},"request_id":"req_011CfpXTYrSBFLUVLqVy57wx"}'
+
+  it('explains a spend cap and when it resets, instead of printing JSON', () => {
+    const message = humanizeAiError(usageLimit)
+    expect(message).toContain('limite di spesa')
+    expect(message).toContain('01/11/2026')
+    expect(message).not.toContain('request_id')
+    expect(message).not.toContain('{')
+  })
+
+  it('tells apart a temporary rate limit from an exhausted account', () => {
+    // One means wait a minute; the other means go and pay. Showing the same
+    // sentence for both sends the user to the wrong place.
+    expect(humanizeAiError('{"error":{"type":"rate_limit_error"}}')).toContain('Aspetta un minuto')
+    expect(humanizeAiError('Your credit balance is too low')).toContain('Ricaricalo')
+  })
+
+  it('passes an unrecognised error through rather than inventing a cause', () => {
+    const unknown = 'AI provider error: something nobody has seen before'
+    expect(humanizeAiError(unknown)).toBe(unknown)
+  })
+})

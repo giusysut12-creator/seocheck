@@ -410,7 +410,7 @@ export async function suggestFix(
   if (error) return { configured: true, fix: null, error: error.message }
   if (!data) return { configured: false, fix: null, error: null }
   if (!data.configured) return { configured: false, fix: null, error: null }
-  if (data.error) return { configured: true, fix: null, error: data.error }
+  if (data.error) return { configured: true, fix: null, error: humanizeAiError(data.error) }
   return {
     configured: true,
     fix: {
@@ -435,4 +435,58 @@ export async function suggestFix(
     },
     error: null,
   }
+}
+
+/**
+ * Turns an Anthropic API error into something the shop owner can act on.
+ *
+ * The assistant's failures arrive as the provider's raw JSON, which the card
+ * printed verbatim: a wall of braces and a request id, in English, in front
+ * of someone whose next move is a setting in a billing console. Every case
+ * below is a different action — raise a spend limit, wait, replace a key —
+ * and the JSON distinguished none of them.
+ *
+ * Anything unrecognised is passed through unchanged rather than flattened
+ * into a generic apology: an untranslated error still beats a wrong one.
+ */
+export function humanizeAiError(raw: string): string {
+  const text = raw.toLowerCase()
+
+  // A spend cap the account owner set themselves (HTTP 400). The date in the
+  // message is when it resets, and it is the single most useful fact here.
+  if (text.includes('usage limit')) {
+    const resetsAt = /on (\d{4}-\d{2}-\d{2})/.exec(raw)?.[1]
+    const resets = resetsAt ? ` Il limite si riazzera il ${formatIsoDate(resetsAt)}.` : ''
+    return (
+      'Hai raggiunto il limite di spesa che hai impostato sul tuo account Anthropic, quindi le richieste sono ' +
+      `bloccate.${resets} Per riprendere subito, alza il limite su console.anthropic.com → Settings → Limits.`
+    )
+  }
+
+  if (text.includes('credit balance') || text.includes('billing')) {
+    return 'Il credito del tuo account Anthropic è esaurito. Ricaricalo su console.anthropic.com → Billing per riprendere.'
+  }
+
+  if (text.includes('rate_limit')) {
+    return 'Troppe richieste in poco tempo. Aspetta un minuto e riprova: è un limite temporaneo, non un problema del tuo account.'
+  }
+
+  if (text.includes('authentication_error') || text.includes('invalid x-api-key')) {
+    return "La chiave API dell'assistente non è valida o è stata revocata. Creane una nuova su console.anthropic.com e aggiorna il segreto AI_API_KEY su Supabase."
+  }
+
+  if (text.includes('overloaded')) {
+    return "I server di Anthropic sono momentaneamente sovraccarichi. Riprova fra qualche secondo: non dipende dal tuo account."
+  }
+
+  if (text.includes('not_found_error') && text.includes('model')) {
+    return "Il modello AI configurato non esiste o non è disponibile per il tuo account. Controlla il segreto AI_MODEL su Supabase."
+  }
+
+  return raw
+}
+
+function formatIsoDate(iso: string): string {
+  const parsed = new Date(`${iso}T00:00:00Z`)
+  return Number.isNaN(parsed.getTime()) ? iso : parsed.toLocaleDateString('it-IT')
 }
