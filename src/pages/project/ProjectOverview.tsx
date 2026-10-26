@@ -19,7 +19,7 @@ import { formatCurrency, formatNumber } from '@/lib/utils'
 
 export default function ProjectOverview() {
   const { project, id } = useCurrentProject()
-  const { audit, refresh } = useLatestAudit(id)
+  const { audit, completed, isStale, refresh } = useLatestAudit(id)
   const { domain, history, latestProvider, previousProvider } = useDomainMetrics(id)
   const navigate = useNavigate()
   const [running, setRunning] = React.useState(false)
@@ -34,7 +34,8 @@ export default function ProjectOverview() {
     return <div className="py-16 text-center text-sm text-muted-foreground">Caricamento progetto…</div>
   }
 
-  const isCrawling = audit?.status === 'crawling' || audit?.status === 'pending'
+  // A run whose driver is gone is not in progress, however its row reads.
+  const isCrawling = (audit?.status === 'crawling' || audit?.status === 'pending') && !isStale
 
   async function handleRunAudit() {
     setError(null)
@@ -86,6 +87,25 @@ export default function ProjectOverview() {
         </Card>
       )}
 
+      {isStale && audit && (
+        <Card className="border-warning/40">
+          <CardContent className="flex flex-wrap items-center gap-3 p-4">
+            <XCircle className="size-5 shrink-0 text-warning" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-foreground">Scansione interrotta</p>
+              <p className="text-xs text-muted-foreground">
+                Si era fermata a {audit.urls_crawled} di {audit.urls_total || '…'} URL. La scansione è guidata da
+                questa pagina: se chiudi la scheda del browser, si ferma. Riavviala e lasciala aperta.
+              </p>
+            </div>
+            <Button variant="accent" size="sm" onClick={handleRunAudit} disabled={running}>
+              {running ? <Loader2 className="size-4 animate-spin" /> : <ScanSearch className="size-4" />}
+              Riavvia
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {!audit && !isCrawling && (
         <EmptyState
           icon={<ScanSearch className="size-5" />}
@@ -116,12 +136,12 @@ export default function ProjectOverview() {
 
       <GoogleConnectionCard projectId={project.id} onSynced={() => setGscVersion((v) => v + 1)} />
 
-      {audit && audit.status === 'completed' && (
+      {completed && (
         <>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <MetricCard
               label="Punteggio SEO"
-              value={audit.seo_score ?? '—'}
+              value={completed.seo_score ?? '—'}
               suffix="/100"
               sparkline={scoreSparkline}
               tooltip="Punteggio ponderato su Tecnica, On-page, Performance, Indicizzabilità, Contenuti e Backlink."
@@ -160,7 +180,7 @@ export default function ProjectOverview() {
             <MetricCard label="Autorità del dominio" value={latestProvider?.domain_authority ?? '—'} tooltip="Punteggio di autorità stimato dal provider, 0-100." />
             <MetricCard
               label="Pagine scansionate"
-              value={formatNumber(audit.urls_crawled)}
+              value={formatNumber(completed.urls_crawled)}
               tooltip="URL analizzati dall'ultima scansione di controllo del sito."
             />
           </div>
@@ -169,14 +189,14 @@ export default function ProjectOverview() {
             <CardContent className="p-5">
               <h2 className="mb-4 text-sm font-semibold text-foreground">Punteggio di salute SEO</h2>
               <SeoScoreGauge
-                score={audit.seo_score ?? 0}
+                score={completed.seo_score ?? 0}
                 categories={{
-                  technical_score: audit.technical_score,
-                  onpage_score: audit.onpage_score,
-                  performance_score: audit.performance_score,
-                  indexability_score: audit.indexability_score,
-                  content_score: audit.content_score,
-                  backlinks_score: audit.backlinks_score,
+                  technical_score: completed.technical_score,
+                  onpage_score: completed.onpage_score,
+                  performance_score: completed.performance_score,
+                  indexability_score: completed.indexability_score,
+                  content_score: completed.content_score,
+                  backlinks_score: completed.backlinks_score,
                 }}
               />
             </CardContent>
@@ -188,7 +208,7 @@ export default function ProjectOverview() {
                 <CardContent className="flex items-center gap-3 p-4">
                   <XCircle className="size-6 text-destructive" />
                   <div>
-                    <p className="text-2xl font-semibold text-foreground">{audit.critical_count}</p>
+                    <p className="text-2xl font-semibold text-foreground">{completed.critical_count}</p>
                     <p className="text-xs text-muted-foreground">Problemi critici</p>
                   </div>
                 </CardContent>
@@ -199,7 +219,7 @@ export default function ProjectOverview() {
                 <CardContent className="flex items-center gap-3 p-4">
                   <AlertTriangle className="size-6 text-warning" />
                   <div>
-                    <p className="text-2xl font-semibold text-foreground">{audit.warning_count}</p>
+                    <p className="text-2xl font-semibold text-foreground">{completed.warning_count}</p>
                     <p className="text-xs text-muted-foreground">Avvisi</p>
                   </div>
                 </CardContent>
@@ -209,7 +229,7 @@ export default function ProjectOverview() {
               <CardContent className="flex items-center gap-3 p-4">
                 <CheckCircle2 className="size-6 text-success" />
                 <div>
-                  <p className="text-2xl font-semibold text-foreground">{audit.passed_count}</p>
+                  <p className="text-2xl font-semibold text-foreground">{completed.passed_count}</p>
                   <p className="text-xs text-muted-foreground">Controlli superati</p>
                 </div>
               </CardContent>

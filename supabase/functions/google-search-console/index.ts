@@ -135,6 +135,53 @@ function chunk<T>(rows: T[], size: number): T[][] {
   return out
 }
 
+/**
+ * The project's Search Console property, re-linking it if a Google reconnect
+ * cleared the pointer.
+ *
+ * Property rows belong to the connection, so reconnecting Google deletes
+ * them and nulls `search_console_property_id` on every project through the
+ * foreign key. The stored property URL survives that, and the new connection
+ * lists the same properties, so the link can be rebuilt without asking the
+ * user to choose again — and without re-syncing data they already have.
+ */
+async function resolveProjectProperty(
+  db: ReturnType<typeof createClient>,
+  callerClient: ReturnType<typeof createClient>,
+  projectId: string,
+  connectionId: string | undefined,
+): Promise<{ property: Record<string, unknown> | null }> {
+  const { data: project } = await callerClient
+    .from('projects')
+    .select('id, search_console_property_id, search_console_property_url')
+    .eq('id', projectId)
+    .maybeSingle()
+  if (!project) return { property: null }
+
+  if (project.search_console_property_id) {
+    const { data: prop } = await db
+      .from('search_console_properties')
+      .select('id, property_url, property_type, permission_level')
+      .eq('id', project.search_console_property_id)
+      .maybeSingle()
+    if (prop) return { property: prop }
+  }
+
+  if (!project.search_console_property_url || !connectionId) return { property: null }
+
+  // The pointer is gone but the project remembers which property it was.
+  const { data: prop } = await db
+    .from('search_console_properties')
+    .select('id, property_url, property_type, permission_level')
+    .eq('connection_id', connectionId)
+    .eq('property_url', project.search_console_property_url)
+    .maybeSingle()
+  if (!prop) return { property: null }
+
+  await db.from('projects').update({ search_console_property_id: prop.id }).eq('id', projectId)
+  return { property: prop }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
@@ -181,19 +228,8 @@ Deno.serve(async (req) => {
         let lastSync: Record<string, unknown> | null = null
 
         if (body.project_id) {
-          const { data: project } = await callerClient
-            .from('projects')
-            .select('id, search_console_property_id')
-            .eq('id', body.project_id)
-            .maybeSingle()
-          if (project?.search_console_property_id) {
-            const { data: prop } = await db
-              .from('search_console_properties')
-              .select('id, property_url, property_type, permission_level')
-              .eq('id', project.search_console_property_id)
-              .maybeSingle()
-            property = prop
-          }
+          const resolved = await resolveProjectProperty(db, callerClient, body.project_id, connection?.id)
+          property = resolved.property
           const { data: sync } = await db
             .from('search_console_syncs')
             .select('*')
@@ -327,7 +363,13 @@ Deno.serve(async (req) => {
           .select('id, property_url, property_type, permission_level')
           .single()
 
-        await db.from('projects').update({ search_console_property_id: prop!.id }).eq('id', body.project_id)
+        // The URL is stored alongside the id because the id does not survive
+        // a Google reconnect: the connection is replaced, its property rows
+        // cascade away, and this pointer is nulled on every project at once.
+        await db
+          .from('projects')
+          .update({ search_console_property_id: prop!.id, search_console_property_url: prop!.property_url })
+          .eq('id', body.project_id)
 
         // Drop what the previous property imported. Rows carry the property
         // they came from but nothing reads that column, so leaving them
@@ -354,20 +396,15 @@ Deno.serve(async (req) => {
 
         const { data: project } = await callerClient
           .from('projects')
-          .select('id, search_console_property_id')
+          .select('id')
           .eq('id', body.project_id)
           .maybeSingle()
         if (!project) return jsonResponse({ error: 'Project not found or access denied' }, 404)
-        if (!project.search_console_property_id) {
+
+        const { property } = await resolveProjectProperty(db, callerClient, body.project_id, connection.id)
+        if (!property) {
           return jsonResponse({ error: 'Select a Search Console property first.', reason: 'no_property' })
         }
-
-        const { data: property } = await db
-          .from('search_console_properties')
-          .select('id, property_url')
-          .eq('id', project.search_console_property_id)
-          .maybeSingle()
-        if (!property) return jsonResponse({ error: 'Selected property no longer exists.', reason: 'no_property' })
 
         const days = RANGE_DAYS[body.range ?? '28d'] ?? 28
         const end = new Date(Date.now() - DATA_LAG_DAYS * 24 * 60 * 60 * 1000)

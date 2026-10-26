@@ -33,7 +33,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 export default function SiteAudit() {
   const { project, id } = useCurrentProject()
-  const { audit, refresh } = useLatestAudit(id)
+  const { audit, completed, isStale, refresh } = useLatestAudit(id)
   const [issues, setIssues] = React.useState<AuditIssue[]>([])
   const [loadingIssues, setLoadingIssues] = React.useState(true)
   const [expanded, setExpanded] = React.useState<string | null>(null)
@@ -43,7 +43,9 @@ export default function SiteAudit() {
   const activeFilter = (params.get('priority')?.split(',').filter(Boolean) as IssuePriority[]) ?? []
 
   React.useEffect(() => {
-    if (!audit || audit.status !== 'completed') {
+    // Issues belong to the last run that finished. Keying them to whatever
+    // ran last emptied the page whenever a crawl was abandoned.
+    if (!completed) {
       setIssues([])
       setLoadingIssues(false)
       return
@@ -52,13 +54,13 @@ export default function SiteAudit() {
     supabase
       .from('audit_issues')
       .select('*')
-      .eq('site_audit_id', audit.id)
+      .eq('site_audit_id', completed.id)
       .order('priority', { ascending: true })
       .then(({ data }) => {
         setIssues((data as AuditIssue[]) ?? [])
         setLoadingIssues(false)
       })
-  }, [audit])
+  }, [completed])
 
   async function handleRunAudit() {
     if (!project) return
@@ -85,7 +87,8 @@ export default function SiteAudit() {
 
   if (!project) return null
 
-  const isCrawling = audit?.status === 'crawling' || audit?.status === 'pending'
+  // A run nobody is driving any more is stopped, whatever its row says.
+  const isCrawling = (audit?.status === 'crawling' || audit?.status === 'pending') && !isStale
 
   return (
     <div className="space-y-6">
@@ -100,6 +103,18 @@ export default function SiteAudit() {
         </Button>
       </div>
 
+      {isStale && audit && (
+        <EmptyState
+          title="Scansione interrotta"
+          description={`Si era fermata a ${audit.urls_crawled} di ${audit.urls_total || '…'} URL. La scansione è guidata dalla pagina aperta nel browser: se chiudi la scheda, si ferma. Riavviala e lasciala aperta finché non finisce.`}
+          action={
+            <Button variant="accent" onClick={handleRunAudit} disabled={running}>
+              <ScanSearch className="size-4" /> Riavvia la scansione
+            </Button>
+          }
+        />
+      )}
+
       {!audit && (
         <EmptyState
           icon={<ScanSearch className="size-5" />}
@@ -113,7 +128,7 @@ export default function SiteAudit() {
         />
       )}
 
-      {audit && audit.status === 'completed' && (
+      {completed && (
         <>
           <div className="flex flex-wrap gap-2">
             {PRIORITY_ORDER.map((p) => (
