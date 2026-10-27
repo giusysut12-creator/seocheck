@@ -17,12 +17,22 @@ import { impressionWeight, modelledCtr } from '@/lib/seo/opportunityEngine'
 export type OpportunityKind = 'ctr_gap' | 'striking_distance' | 'losing_ground' | 'cannibalization'
 
 /**
- * Below this, a period's numbers are noise rather than a signal. Kept low on
- * purpose: on a smaller site a query with a few dozen impressions is still
- * worth knowing about, and the score already sinks low-demand keywords to the
- * bottom of the list. A high cut-off here would hide them entirely instead.
+ * Below this, a period's numbers are noise rather than a signal.
+ *
+ * It was 30 over a 28-day window, which is about one impression a day — far
+ * too high for a site that is still getting started. On a real project here,
+ * 119 of its 121 keywords fell under it, and the two that cleared it ranked
+ * past position 35 where nothing can be done anyway. The single actionable
+ * keyword on the whole site — position 12.8, a textbook climb — was hidden by
+ * one impression, and the page showed nothing at all.
+ *
+ * An empty screen is the worst possible answer: it reads as "this tool is
+ * broken" rather than "your site is new". The score already sinks low-demand
+ * keywords to the bottom, so the cost of letting them through is an extra row
+ * near the end of a sorted list, while the cost of keeping them out is a user
+ * with nothing to act on.
  */
-const MIN_IMPRESSIONS = 30
+const MIN_IMPRESSIONS = 10
 
 /** A page-one result earning less than this share of its expected clicks. */
 const CTR_UNDERPERFORM_RATIO = 0.5

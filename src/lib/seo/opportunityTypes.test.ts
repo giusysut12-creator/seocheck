@@ -172,3 +172,20 @@ describe('classifyCannibalization', () => {
     expect(result!.potentialClicks).toBeGreaterThan(50)
   })
 })
+
+describe('small sites', () => {
+  // From a real project: 121 keywords, 401 impressions in 28 days, and the
+  // one keyword worth working on sat at 29 impressions — one short of the
+  // old floor. The page showed nothing, which reads as a broken tool rather
+  // than a young site.
+  it('surfaces a realistic climb on a site with very little traffic', () => {
+    const found = classifyKeyword(
+      signal({ keyword: 'marketing automation pmi', position: 12.8, impressions: 29, clicks: 0, ctr: 0 }),
+    )
+    expect(found.map((o) => o.kind)).toContain('striking_distance')
+  })
+
+  it('still ignores a keyword with almost no demand at all', () => {
+    expect(classifyKeyword(signal({ keyword: 'rumore', position: 5, impressions: 3, clicks: 0, ctr: 0 }))).toEqual([])
+  })
+})

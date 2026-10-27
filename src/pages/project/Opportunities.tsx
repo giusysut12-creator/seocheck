@@ -415,7 +415,13 @@ function OpportunityList({
     return (
       <EmptyState
         title="Al momento non c'è nulla qui"
-        description="Nessuna parola chiave nel periodo selezionato corrisponde a questo pattern. Prova un periodo più lungo."
+        description={
+          'Queste opportunità nascono da Search Console: servono parole chiave per cui il sito riceve già ' +
+          "qualche impressione e che siano abbastanza vicine alla vetta da poterci lavorare. Su un sito giovane " +
+          'è normale che non ce ne siano ancora — rilanciare la scansione non cambia nulla, perché la scansione ' +
+          'alimenta invece la scheda "Pagine da sistemare", dove trovi subito su cosa intervenire. Puoi anche ' +
+          'provare un periodo più lungo qui sopra.'
+        }
       />
     )
   }
